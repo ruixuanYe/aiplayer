@@ -1,9 +1,11 @@
 package com.aiplayercompanion.bot;
 
 import com.mojang.authlib.GameProfile;
+import com.mojang.datafixers.util.Pair;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.item.ItemStack;
+import net.minecraft.network.packet.s2c.play.EntityEquipmentUpdateS2CPacket;
 import net.minecraft.network.packet.c2s.common.SyncedClientOptions;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -181,7 +183,24 @@ public class AIPlayerBot extends ServerPlayerEntity {
             default -> super.equipStack(slot, stack);
         }
         getInventory().markDirty();
-        currentScreenHandler.sendContentUpdates();
+        syncEquipment();
+    }
+
+    public void syncEquipment() {
+        if (currentScreenHandler != null) {
+            currentScreenHandler.sendContentUpdates();
+        }
+        if (getWorld() instanceof ServerWorld serverWorld) {
+            List<Pair<EquipmentSlot, ItemStack>> equipment = List.of(
+                    Pair.of(EquipmentSlot.MAINHAND, getEquippedStack(EquipmentSlot.MAINHAND).copy()),
+                    Pair.of(EquipmentSlot.OFFHAND, getEquippedStack(EquipmentSlot.OFFHAND).copy()),
+                    Pair.of(EquipmentSlot.HEAD, getEquippedStack(EquipmentSlot.HEAD).copy()),
+                    Pair.of(EquipmentSlot.CHEST, getEquippedStack(EquipmentSlot.CHEST).copy()),
+                    Pair.of(EquipmentSlot.LEGS, getEquippedStack(EquipmentSlot.LEGS).copy()),
+                    Pair.of(EquipmentSlot.FEET, getEquippedStack(EquipmentSlot.FEET).copy())
+            );
+            serverWorld.getChunkManager().sendToNearbyPlayers(this, new EntityEquipmentUpdateS2CPacket(getId(), equipment));
+        }
     }
 
     @Override
