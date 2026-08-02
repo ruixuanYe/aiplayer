@@ -13,6 +13,9 @@ import com.google.gson.JsonParser;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.entity.ItemEntity;
+import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.ClickEvent;
@@ -21,11 +24,14 @@ import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 public final class CompanionInteractionService {
@@ -124,6 +130,9 @@ public final class CompanionInteractionService {
         if (trySendAuthorPraise(player, normalized)) {
             return true;
         }
+        if (handleInventoryIntent(player, normalized)) {
+            return true;
+        }
 
         requestChat(player, normalized, false);
         return true;
@@ -177,8 +186,161 @@ public final class CompanionInteractionService {
             return;
         }
         CompanionLog.player(player, "CHAT_IN", ModConfig.get().logChatContent ? content : "<hidden by config>");
-        LM_STUDIO_CLIENT.chatWithSystemPrompt(ACTION_SYSTEM_PROMPT, content, 0.2D)
+        LM_STUDIO_CLIENT.chatWithSystemPrompt(ACTION_SYSTEM_PROMPT, contentWithBotContext(player, content), 0.2D)
                 .thenAccept(response -> player.getServer().execute(() -> handleActionResponse(player, content, response)));
+    }
+
+    private static boolean handleInventoryIntent(ServerPlayerEntity player, String content) {
+        Optional<AIPlayerBot> maybeBot = AIPlayerBotManager.findOwnedBot(player);
+        if (maybeBot.isEmpty()) {
+            return false;
+        }
+        String normalized = content == null ? "" : content.strip().toLowerCase(Locale.ROOT);
+        if (isInventoryQuestion(normalized)) {
+            player.sendMessage(Text.literal(ModelNameUtil.companionName() + "：").formatted(Formatting.AQUA)
+                    .append(Text.literal(inventorySummary(maybeBot.get())).formatted(Formatting.WHITE)), false);
+            CompanionLog.player(player, "INVENTORY", "listed bot inventory");
+            return true;
+        }
+        if (!isGiveItemRequest(normalized)) {
+            return false;
+        }
+        giveRequestedItem(player, maybeBot.get(), normalized);
+        return true;
+    }
+
+    private static boolean isInventoryQuestion(String content) {
+        return (content.contains("背包") || content.contains("身上") || content.contains("物品") || content.contains("装备"))
+                && (content.contains("有什么") || content.contains("有什么东西") || content.contains("有啥") || content.contains("列表") || content.contains("看一下") || content.contains("看看"));
+    }
+
+    private static boolean isGiveItemRequest(String content) {
+        return (content.contains("给我") || content.contains("丢给我") || content.contains("扔给我") || content.contains("拿给我") || content.contains("把"))
+                && !(content.contains("跟随") || content.contains("过来") || content.contains("等待") || content.contains("停下"));
+    }
+
+    private static void giveRequestedItem(ServerPlayerEntity player, AIPlayerBot bot, String request) {
+        Optional<Integer> slot = findRequestedItemSlot(bot, request);
+        if (slot.isEmpty()) {
+            player.sendMessage(Text.literal(ModelNameUtil.companionName() + "：我没找到你要的东西。").formatted(Formatting.YELLOW), false);
+            CompanionLog.player(player, "INVENTORY", "give failed: item not found");
+            return;
+        }
+
+        ItemStack stack = bot.getInventory().removeStack(slot.get());
+        if (stack.isEmpty()) {
+            player.sendMessage(Text.literal(ModelNameUtil.companionName() + "：这个槽位是空的。").formatted(Formatting.YELLOW), false);
+            return;
+        }
+        ItemEntity dropped = bot.dropItem(stack, false);
+        if (dropped != null) {
+            dropped.setPickupDelay(0);
+            Vec3d target = player.getEyePos().subtract(bot.getEyePos()).normalize().multiply(0.35D);
+            dropped.setVelocity(target.x, 0.2D, target.z);
+        } else {
+            player.giveItemStack(stack);
+        }
+        bot.getInventory().markDirty();
+        player.sendMessage(Text.literal(ModelNameUtil.companionName() + "：给你，" + stack.getName().getString() + "。").formatted(Formatting.AQUA), false);
+        CompanionLog.player(player, "INVENTORY", "gave requested item");
+    }
+
+    private static Optional<Integer> findRequestedItemSlot(AIPlayerBot bot, String request) {
+        int bestSlot = -1;
+        int bestScore = 0;
+        for (int i = 0; i < bot.getInventory().size(); i++) {
+            ItemStack stack = bot.getInventory().getStack(i);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            int score = requestMatchScore(request, stack);
+            if (score > bestScore) {
+                bestScore = score;
+                bestSlot = i;
+            }
+        }
+        return bestSlot >= 0 ? Optional.of(bestSlot) : Optional.empty();
+    }
+
+    private static int requestMatchScore(String request, ItemStack stack) {
+        String name = normalizeText(stack.getName().getString());
+        String id = normalizeText(Registries.ITEM.getId(stack.getItem()).toString());
+        String path = normalizeText(Registries.ITEM.getId(stack.getItem()).getPath());
+        String normalizedRequest = normalizeText(request);
+        if (!name.isBlank() && normalizedRequest.contains(name)) {
+            return 100 + name.length();
+        }
+        if (!path.isBlank() && normalizedRequest.contains(path)) {
+            return 90 + path.length();
+        }
+        if (!id.isBlank() && normalizedRequest.contains(id)) {
+            return 80 + id.length();
+        }
+        return chineseAliasScore(normalizedRequest, path);
+    }
+
+    private static int chineseAliasScore(String request, String itemPath) {
+        int material = 0;
+        if (request.contains("下界合金") && itemPath.contains("netherite")) material = 60;
+        else if (request.contains("钻石") && itemPath.contains("diamond")) material = 55;
+        else if (request.contains("铁") && itemPath.contains("iron")) material = 50;
+        else if (request.contains("石") && itemPath.contains("stone")) material = 45;
+        else if (request.contains("金") && itemPath.contains("golden")) material = 40;
+        else if ((request.contains("木") || request.contains("木头")) && itemPath.contains("wooden")) material = 35;
+        else if (request.contains("锁链") && itemPath.contains("chainmail")) material = 35;
+        else if (request.contains("皮革") && itemPath.contains("leather")) material = 30;
+
+        int type = 0;
+        if ((request.contains("剑") || request.contains("武器")) && itemPath.contains("sword")) type = 30;
+        else if ((request.contains("斧") || request.contains("斧头")) && itemPath.contains("axe")) type = 28;
+        else if ((request.contains("头盔") || request.contains("帽子")) && itemPath.contains("helmet")) type = 25;
+        else if ((request.contains("胸甲") || request.contains("衣服")) && itemPath.contains("chestplate")) type = 25;
+        else if ((request.contains("护腿") || request.contains("裤子")) && itemPath.contains("leggings")) type = 25;
+        else if ((request.contains("靴") || request.contains("鞋")) && itemPath.contains("boots")) type = 25;
+
+        if (material > 0 && type > 0) {
+            return material + type;
+        }
+        if (type > 0 && !request.contains("钻石") && !request.contains("铁") && !request.contains("金") && !request.contains("石") && !request.contains("下界合金")) {
+            return type;
+        }
+        return 0;
+    }
+
+    private static String inventorySummary(AIPlayerBot bot) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (int i = 0; i < bot.getInventory().size(); i++) {
+            ItemStack stack = bot.getInventory().getStack(i);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            String name = stack.getName().getString();
+            counts.put(name, counts.getOrDefault(name, 0) + stack.getCount());
+        }
+        if (counts.isEmpty()) {
+            return "我背包里现在是空的。";
+        }
+        List<String> parts = new ArrayList<>();
+        counts.forEach((name, count) -> parts.add(name + " x" + count));
+        return "我现在有：" + String.join("，", parts) + "。";
+    }
+
+    private static String contentWithBotContext(ServerPlayerEntity player, String content) {
+        Optional<AIPlayerBot> maybeBot = AIPlayerBotManager.findOwnedBot(player);
+        if (maybeBot.isEmpty()) {
+            return content;
+        }
+        return content + "\n\n[本地游戏状态]\nBot 背包：" + inventorySummary(maybeBot.get())
+                + "\n注意：你可以根据这个摘要聊天说明自己有什么，但不要声称已经丢出物品；丢物品由本地规则执行。";
+    }
+
+    private static String normalizeText(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.ROOT)
+                .replace("minecraft:", "")
+                .replace("_", "")
+                .replace(" ", "")
+                .replace("-", "")
+                .strip();
     }
 
     public static boolean isFollowCommand(String content) {
