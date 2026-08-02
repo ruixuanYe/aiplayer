@@ -44,6 +44,7 @@ final class AIPlayerBotController {
     private static final double WAYPOINT_REACHED_DISTANCE = 0.55D;
     private static final double STUCK_DISTANCE_SQ = 0.0004D;
     private static final double GRAVITY_STEP = -0.08D;
+    private static final double JUMP_STEP = 0.42D;
     private static final double DEFEND_SCAN_RANGE = 12.0D;
     private static final double ATTACK_REACH = 2.8D;
     private static final double PICKUP_SCAN_RANGE = 7.0D;
@@ -279,7 +280,7 @@ final class AIPlayerBotController {
         for (EquipmentSlot slot : List.of(EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET)) {
             int armorSlot = armorInventorySlot(slot);
             int bestSlot = -1;
-            int bestScore = armorScore(bot.getInventory().getStack(armorSlot), slot);
+            int bestScore = armorScore(bot.getEquippedStack(slot), slot);
             for (int i = 0; i < 36; i++) {
                 ItemStack stack = bot.getInventory().getStack(i);
                 int score = armorScore(stack, slot);
@@ -289,25 +290,21 @@ final class AIPlayerBotController {
                 }
             }
             if (bestSlot >= 0) {
-                ItemStack current = bot.getInventory().getStack(armorSlot);
+                ItemStack current = bot.getEquippedStack(slot).copy();
                 ItemStack replacement = bot.getInventory().removeStack(bestSlot, 1);
                 bot.getInventory().setStack(armorSlot, replacement);
+                bot.equipStack(slot, replacement);
                 if (!current.isEmpty()) {
                     bot.getInventory().insertStack(current);
                 }
                 bot.getInventory().markDirty();
+                bot.currentScreenHandler.sendContentUpdates();
             }
         }
     }
 
     private static int armorInventorySlot(EquipmentSlot slot) {
-        return switch (slot) {
-            case FEET -> 36;
-            case LEGS -> 37;
-            case CHEST -> 38;
-            case HEAD -> 39;
-            default -> -1;
-        };
+        return slot.getOffsetEntitySlotId(36);
     }
 
     private static int armorScore(ItemStack stack, EquipmentSlot slot) {
@@ -357,15 +354,15 @@ final class AIPlayerBotController {
         }
         if (bestSlot >= 9) {
             ItemStack currentHand = bot.getInventory().getStack(selectedSlot);
-            ItemStack bestWeapon = bot.getInventory().removeStack(bestSlot);
+            ItemStack bestWeapon = bot.getInventory().getStack(bestSlot);
+            bot.getInventory().setStack(bestSlot, currentHand);
             bot.getInventory().setStack(selectedSlot, bestWeapon);
-            if (!currentHand.isEmpty()) {
-                bot.getInventory().insertStack(currentHand);
-            }
         } else {
             bot.getInventory().setSelectedSlot(bestSlot);
         }
+        bot.equipStack(EquipmentSlot.MAINHAND, bot.getInventory().getStack(bot.getInventory().getSelectedSlot()));
         bot.getInventory().markDirty();
+        bot.currentScreenHandler.sendContentUpdates();
     }
 
     private static int weaponScore(ItemStack stack) {
@@ -439,6 +436,9 @@ final class AIPlayerBotController {
                 ? Vec3d.ZERO
                 : horizontal.normalize().multiply(Math.min(speed, horizontalLength));
         double verticalMove = verticalMoveFor(bot, delta.y);
+        if (verticalMove <= 0.0D && shouldHopToward(bot, horizontal, delta.y)) {
+            verticalMove = JUMP_STEP;
+        }
         Vec3d movement = new Vec3d(horizontalMove.x, verticalMove, horizontalMove.z);
         Vec3d before = bot.getPos();
 
@@ -453,6 +453,10 @@ final class AIPlayerBotController {
         applyGroundPhysics(bot);
 
         if (bot.getPos().squaredDistanceTo(before) < STUCK_DISTANCE_SQ) {
+            if (tryUnstuckJump(bot, horizontal, waypoint)) {
+                bot.velocityModified = true;
+                return;
+            }
             bot.clearPath();
             bot.setPath(Collections.emptyList(), target, now - PATH_RECOMPUTE_TICKS + 8L);
         } else if (bot.getPos().squaredDistanceTo(waypoint) < WAYPOINT_REACHED_DISTANCE * WAYPOINT_REACHED_DISTANCE) {
@@ -542,12 +546,48 @@ final class AIPlayerBotController {
             return MathHelper.clamp(targetDeltaY, -0.15D, 0.16D);
         }
         if (targetDeltaY > 0.35D && targetDeltaY < 1.35D && bot.isOnGround()) {
-            return 0.42D;
+            return JUMP_STEP;
+        }
+        if (targetDeltaY >= 1.35D && targetDeltaY < 2.35D && bot.isOnGround()) {
+            return JUMP_STEP;
         }
         if (targetDeltaY < -0.75D) {
             return -0.22D;
         }
         return 0.0D;
+    }
+
+    private static boolean shouldHopToward(AIPlayerBot bot, Vec3d horizontal, double targetDeltaY) {
+        if (!bot.isOnGround() || horizontal.lengthSquared() < 0.0001D) {
+            return false;
+        }
+        if (targetDeltaY > 0.25D) {
+            return true;
+        }
+        Vec3d direction = horizontal.normalize();
+        BlockPos frontFeet = BlockPos.ofFloored(bot.getX() + direction.x * 0.55D, bot.getY(), bot.getZ() + direction.z * 0.55D);
+        BlockState front = bot.getWorld().getBlockState(frontFeet);
+        BlockState frontHead = bot.getWorld().getBlockState(frontFeet.up());
+        BlockState aboveHead = bot.getWorld().getBlockState(bot.getBlockPos().up(2));
+        return !front.getCollisionShape(bot.getWorld(), frontFeet).isEmpty()
+                && frontHead.getCollisionShape(bot.getWorld(), frontFeet.up()).isEmpty()
+                && aboveHead.getCollisionShape(bot.getWorld(), bot.getBlockPos().up(2)).isEmpty();
+    }
+
+    private static boolean tryUnstuckJump(AIPlayerBot bot, Vec3d horizontal, Vec3d waypoint) {
+        if (!bot.isOnGround()) {
+            return false;
+        }
+        Vec3d direction = horizontal.lengthSquared() < 0.0001D
+                ? waypoint.subtract(bot.getPos()).multiply(1.0D, 0.0D, 1.0D)
+                : horizontal;
+        if (direction.lengthSquared() < 0.0001D) {
+            return false;
+        }
+        Vec3d push = direction.normalize().multiply(0.18D);
+        bot.setVelocity(push.x, JUMP_STEP, push.z);
+        bot.move(MovementType.SELF, new Vec3d(push.x, JUMP_STEP, push.z));
+        return true;
     }
 
     private static void stopOnGround(AIPlayerBot bot) {
@@ -658,8 +698,8 @@ final class AIPlayerBotController {
     }
 
     private static void addNeighbor(ServerWorld world, List<BlockPos> result, BlockPos pos, int dx, int dz) {
-        Optional<BlockPos> safe = findWalkableLanding(world, pos.add(dx, 0, dz), 2);
-        if (safe.isEmpty() || Math.abs(safe.get().getY() - pos.getY()) > 1) {
+        Optional<BlockPos> safe = findWalkableLanding(world, pos.add(dx, 0, dz), 3);
+        if (safe.isEmpty() || safe.get().getY() - pos.getY() > 2 || pos.getY() - safe.get().getY() > 3) {
             return;
         }
         if (dx != 0 && dz != 0) {
