@@ -1,6 +1,8 @@
 package com.aiplayercompanion.bot;
 
+import com.aiplayercompanion.AIPlayerCompanionMod;
 import com.aiplayercompanion.config.ModConfig;
+import com.aiplayercompanion.entity.AIPlayerEntity;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.DoorBlock;
@@ -37,6 +39,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class AIPlayerBotController {
     private static final long PATH_RECOMPUTE_TICKS = 30L;
@@ -50,6 +54,7 @@ final class AIPlayerBotController {
     private static final double ATTACK_REACH = 2.8D;
     private static final double PICKUP_SCAN_RANGE = 7.0D;
     private static final double PICKUP_REACH = 1.8D;
+    private static final ConcurrentHashMap<UUID, AIPlayerEntity> NAVIGATION_PROXIES = new ConcurrentHashMap<>();
 
     private AIPlayerBotController() {
     }
@@ -61,6 +66,7 @@ final class AIPlayerBotController {
 
         if (bot.getBotState() == AIPlayerBot.BotState.WAITING) {
             stopOnGround(bot);
+            stopNavigationProxy(bot);
             bot.setSneaking(true);
             idleLook(bot, owner, now);
             return;
@@ -107,17 +113,7 @@ final class AIPlayerBotController {
             return;
         }
 
-        if (shouldRepath(bot, target.get(), now)) {
-            List<BlockPos> path = findPath(owner.getWorld(), bot.getBlockPos(), target.get());
-            if (path.isEmpty()) {
-                stopOnGround(bot);
-                lookTowardYaw(bot, owner.getYaw());
-                return;
-            }
-            bot.setPath(path, target.get(), now);
-        }
-
-        followPath(bot, owner, target.get(), ownerDistanceSq, now);
+        navigateWithVanillaMob(bot, owner, target.get(), ownerDistanceSq, now);
     }
 
     private static Optional<LivingEntity> findThreat(ServerPlayerEntity owner, AIPlayerBot bot) {
@@ -181,14 +177,7 @@ final class AIPlayerBotController {
         if (target.isEmpty()) {
             return false;
         }
-        if (shouldRepath(bot, target.get(), now)) {
-            List<BlockPos> path = findPath(owner.getWorld(), bot.getBlockPos(), target.get());
-            if (path.isEmpty()) {
-                return false;
-            }
-            bot.setPath(path, target.get(), now);
-        }
-        followPath(bot, owner, target.get(), distanceSq, now);
+        navigateWithVanillaMob(bot, owner, target.get(), distanceSq, now);
         return true;
     }
 
@@ -256,14 +245,7 @@ final class AIPlayerBotController {
         if (target.isEmpty()) {
             return false;
         }
-        if (shouldRepath(bot, target.get(), now)) {
-            List<BlockPos> path = findPath(owner.getWorld(), bot.getBlockPos(), target.get());
-            if (path.isEmpty()) {
-                return false;
-            }
-            bot.setPath(path, target.get(), now);
-        }
-        followPath(bot, owner, target.get(), distanceSq, now);
+        navigateWithVanillaMob(bot, owner, target.get(), distanceSq, now);
         return true;
     }
 
@@ -386,6 +368,7 @@ final class AIPlayerBotController {
 
     private static void stopCombatMovement(AIPlayerBot bot) {
         bot.clearPath();
+        stopNavigationProxy(bot);
         bot.setSprinting(false);
         bot.setVelocity(Vec3d.ZERO);
         applyGroundPhysics(bot);
@@ -408,6 +391,7 @@ final class AIPlayerBotController {
         }
         bot.setVelocity(Vec3d.ZERO);
         bot.clearPath();
+        resetNavigationProxy(bot);
         bot.velocityModified = true;
         enforceSurvivalBody(bot);
         if (feedback) {
@@ -469,6 +453,83 @@ final class AIPlayerBotController {
             bot.advancePath();
         }
         bot.velocityModified = true;
+    }
+
+    private static void navigateWithVanillaMob(AIPlayerBot bot, ServerPlayerEntity owner, BlockPos target, double ownerDistanceSq, long now) {
+        AIPlayerEntity proxy = navigationProxy(bot, owner);
+        double speed = (ownerDistanceSq > ModConfig.get().sprintFollowDistance * ModConfig.get().sprintFollowDistance ? 1.35D : 1.05D)
+                * bot.getSpeedScale();
+        if (proxy.getNavigation().isIdle()
+                || proxy.getNavigation().getTargetPos() == null
+                || proxy.getNavigation().getTargetPos().getSquaredDistance(target) > 2.0D
+                || now - bot.getLastPathComputeTick() >= PATH_RECOMPUTE_TICKS) {
+            proxy.getNavigation().startMovingTo(target.getX() + 0.5D, target.getY(), target.getZ() + 0.5D, speed);
+            bot.setPath(Collections.emptyList(), target, now);
+        } else {
+            proxy.getNavigation().setSpeed(speed);
+        }
+        mirrorBotToProxy(bot, proxy, ownerDistanceSq, target);
+    }
+
+    private static AIPlayerEntity navigationProxy(AIPlayerBot bot, ServerPlayerEntity owner) {
+        AIPlayerEntity proxy = NAVIGATION_PROXIES.get(bot.getUuid());
+        if (proxy == null || proxy.isRemoved() || proxy.getWorld() != owner.getWorld()) {
+            if (proxy != null && !proxy.isRemoved()) {
+                proxy.discard();
+            }
+            proxy = new AIPlayerEntity(AIPlayerCompanionMod.AI_PLAYER, owner.getWorld());
+            proxy.setOwner(owner);
+            proxy.setCompanionState(AIPlayerEntity.CompanionState.WAITING);
+            proxy.setInvisible(true);
+            proxy.setSilent(true);
+            proxy.setInvulnerable(true);
+            proxy.setCustomNameVisible(false);
+            proxy.refreshPositionAndAngles(bot.getX(), bot.getY(), bot.getZ(), bot.getYaw(), bot.getPitch());
+            owner.getWorld().spawnEntity(proxy);
+            NAVIGATION_PROXIES.put(bot.getUuid(), proxy);
+        }
+        if (proxy.squaredDistanceTo(bot) > 16.0D || bot.isOnGround() && proxy.getNavigation().isIdle()) {
+            proxy.refreshPositionAndAngles(bot.getX(), bot.getY(), bot.getZ(), bot.getYaw(), bot.getPitch());
+        }
+        return proxy;
+    }
+
+    private static void mirrorBotToProxy(AIPlayerBot bot, AIPlayerEntity proxy, double ownerDistanceSq, BlockPos target) {
+        Vec3d proxyPos = proxy.getPos();
+        Vec3d previous = bot.getPos();
+        double speedHint = ownerDistanceSq > ModConfig.get().sprintFollowDistance * ModConfig.get().sprintFollowDistance ? 0.28D : 0.17D;
+        Vec3d delta = proxyPos.subtract(previous);
+        Vec3d horizontal = new Vec3d(delta.x, 0.0D, delta.z);
+        if (horizontal.lengthSquared() > 0.0001D) {
+            float yaw = (float) (MathHelper.atan2(horizontal.z, horizontal.x) * 57.2957763671875D) - 90.0F;
+            lookTowardYaw(bot, yaw);
+        }
+        bot.setSneaking(false);
+        bot.setSprinting(ownerDistanceSq > ModConfig.get().sprintFollowDistance * ModConfig.get().sprintFollowDistance);
+        bot.requestTeleport(proxyPos.x, proxyPos.y, proxyPos.z);
+        bot.setVelocity(horizontal.lengthSquared() > 0.0001D ? horizontal.normalize().multiply(speedHint) : Vec3d.ZERO);
+        bot.velocityModified = true;
+        if (bot.getBlockPos().getSquaredDistance(target) <= 1.5D) {
+            proxy.getNavigation().stop();
+        }
+    }
+
+    private static void stopNavigationProxy(AIPlayerBot bot) {
+        AIPlayerEntity proxy = NAVIGATION_PROXIES.get(bot.getUuid());
+        if (proxy != null && !proxy.isRemoved()) {
+            proxy.getNavigation().stop();
+        }
+    }
+
+    private static void resetNavigationProxy(AIPlayerBot bot) {
+        AIPlayerEntity proxy = NAVIGATION_PROXIES.remove(bot.getUuid());
+        if (proxy != null && !proxy.isRemoved()) {
+            proxy.discard();
+        }
+    }
+
+    static void discardNavigationProxy(AIPlayerBot bot) {
+        resetNavigationProxy(bot);
     }
 
     private static boolean shouldRepath(AIPlayerBot bot, BlockPos target, long now) {

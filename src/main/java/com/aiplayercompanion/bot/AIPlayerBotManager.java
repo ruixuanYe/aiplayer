@@ -116,6 +116,7 @@ public final class AIPlayerBotManager {
     }
 
     public static void remove(ServerPlayerEntity owner, AIPlayerBot bot) {
+        AIPlayerBotController.discardNavigationProxy(bot);
         owner.getServer().getPlayerManager().remove(bot);
         bot.remove(Entity.RemovalReason.DISCARDED);
         ModConfig.get().botPlayerUuid = "";
@@ -192,6 +193,7 @@ public final class AIPlayerBotManager {
                 continue;
             }
             if (bot.isDead() || !bot.isAlive() || bot.getHealth() <= 0.0F) {
+                AIPlayerBotController.discardNavigationProxy(bot);
                 owner.getServer().getPlayerManager().remove(bot);
                 bot.discard();
                 PENDING_RESPAWNS.put(owner.getUuid(), new PendingRespawn("death detected", owner.getWorld().getTime() - RESPAWN_RETRY_TICKS + DEATH_RESPAWN_DELAY_TICKS, false));
