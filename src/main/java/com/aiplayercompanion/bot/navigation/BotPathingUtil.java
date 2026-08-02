@@ -44,18 +44,27 @@ public final class BotPathingUtil {
     }
 
     public static Optional<BlockPos> nearestSafeGround(ServerWorld world, BlockPos center, int radius) {
+        return nearestSafeGround(world, center, 0, radius);
+    }
+
+    public static Optional<BlockPos> nearestSafeGround(ServerWorld world, BlockPos center, int minRadius, int radius) {
         BlockPos best = null;
         double bestScore = Double.MAX_VALUE;
-        for (int x = -radius; x <= radius; x++) {
-            for (int z = -radius; z <= radius; z++) {
-                Optional<BlockPos> safe = findGroundLanding(world, center.add(x, 0, z), 32);
-                if (safe.isEmpty()) {
-                    continue;
-                }
-                double score = safe.get().getSquaredDistance(center);
-                if (score < bestScore) {
-                    best = safe.get();
-                    bestScore = score;
+        for (int r = Math.max(0, minRadius); r <= radius; r++) {
+            for (int x = -r; x <= r; x++) {
+                for (int z = -r; z <= r; z++) {
+                    if (r > 0 && Math.abs(x) != r && Math.abs(z) != r) {
+                        continue;
+                    }
+                    Optional<BlockPos> safe = findGroundLanding(world, center.add(x, 0, z), 32);
+                    if (safe.isEmpty()) {
+                        continue;
+                    }
+                    double score = safe.get().getSquaredDistance(center);
+                    if (score < bestScore) {
+                        best = safe.get();
+                        bestScore = score;
+                    }
                 }
             }
         }

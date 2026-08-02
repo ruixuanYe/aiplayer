@@ -29,10 +29,10 @@ final class BotMovementController {
             return false;
         }
         BlockPos currentNode = path.get(bot.getPathIndex());
-        openDoorsAround(bot);
         Vec3d waypoint = Vec3d.ofBottomCenter(currentNode);
         Vec3d delta = waypoint.subtract(bot.getPos());
         Vec3d horizontal = new Vec3d(delta.x, 0.0D, delta.z);
+        openDoorsAround(bot, horizontal);
 
         if (horizontal.lengthSquared() < WAYPOINT_REACHED_DISTANCE * WAYPOINT_REACHED_DISTANCE && Math.abs(delta.y) < 0.95D) {
             bot.advancePath();
@@ -75,11 +75,6 @@ final class BotMovementController {
         if (isOnClimbable(bot)) {
             return MathHelper.clamp(targetDeltaY, -0.18D, 0.20D);
         }
-        if (targetDeltaY > 0.25D && bot.isOnGround()) {
-            bot.setJumping(true);
-            bot.jump();
-            return Math.max(JUMP_STEP, bot.getVelocity().y);
-        }
         if (shouldHopForward(bot, horizontal, target) && bot.isOnGround()) {
             bot.setJumping(true);
             bot.jump();
@@ -117,15 +112,30 @@ final class BotMovementController {
                 || BotPathingUtil.isClimbable(bot.getWorld().getBlockState(bot.getBlockPos().up()));
     }
 
-    private static void openDoorsAround(AIPlayerBot bot) {
+    private static void openDoorsAround(AIPlayerBot bot, Vec3d horizontal) {
         ServerWorld world = bot.getWorld();
         BlockPos base = bot.getBlockPos();
-        for (BlockPos pos : List.of(base, base.up(), base.north(), base.south(), base.east(), base.west())) {
-            BlockState state = world.getBlockState(pos);
-            if (BotPathingUtil.canOpenDoor(state)) {
-                world.setBlockState(pos, state.with(DoorBlock.OPEN, true), DoorBlock.NOTIFY_LISTENERS);
-                world.syncWorldEvent(null, 1006, pos, 0);
-            }
+        for (BlockPos pos : List.of(
+                base, base.up(),
+                base.north(), base.north().up(),
+                base.south(), base.south().up(),
+                base.east(), base.east().up(),
+                base.west(), base.west().up())) {
+            openDoorAt(world, pos);
+        }
+        if (horizontal.lengthSquared() > 0.0001D) {
+            Vec3d direction = horizontal.normalize();
+            BlockPos front = BlockPos.ofFloored(bot.getX() + direction.x * 1.15D, bot.getY(), bot.getZ() + direction.z * 1.15D);
+            openDoorAt(world, front);
+            openDoorAt(world, front.up());
+        }
+    }
+
+    private static void openDoorAt(ServerWorld world, BlockPos pos) {
+        BlockState state = world.getBlockState(pos);
+        if (BotPathingUtil.canOpenDoor(state)) {
+            world.setBlockState(pos, state.with(DoorBlock.OPEN, true), DoorBlock.NOTIFY_LISTENERS);
+            world.syncWorldEvent(null, 1006, pos, 0);
         }
     }
 

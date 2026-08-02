@@ -40,7 +40,7 @@ public final class BotNavigationController {
             List<BotPathNode> typedPath = BotPathPlanner.findPath(owner.getWorld(), bot.getBlockPos(), target);
             if (typedPath.isEmpty()) {
                 BotMovementController.stop(bot);
-                return false;
+                return maybeTeleportWhenNoPath(bot, owner, sprintDistanceSq);
             }
             bot.setPath(typedPath.stream().map(BotPathNode::pos).toList(), target, now);
         }
@@ -89,7 +89,7 @@ public final class BotNavigationController {
 
     public static boolean teleportNearOwner(ServerPlayerEntity owner, AIPlayerBot bot, boolean feedback) {
         Optional<BlockPos> ownerGround = BotPathingUtil.findGroundLanding(owner.getWorld(), owner.getBlockPos(), 64);
-        Optional<BlockPos> safe = ownerGround.flatMap(pos -> BotPathingUtil.nearestSafeGround(owner.getWorld(), pos, 8));
+        Optional<BlockPos> safe = ownerGround.flatMap(pos -> BotPathingUtil.nearestSafeGround(owner.getWorld(), pos, 3, 9));
         if (safe.isEmpty()) {
             if (feedback) {
                 owner.sendMessage(Text.literal(bot.getName().getString() + ": 找不到安全传送点，我先在原地等。").formatted(Formatting.YELLOW), false);
@@ -108,6 +108,14 @@ public final class BotNavigationController {
             owner.sendMessage(Text.literal(bot.getName().getString() + ": 距离太远了，我回到你附近的安全地面。").formatted(Formatting.GREEN), false);
         }
         return true;
+    }
+
+    private static boolean maybeTeleportWhenNoPath(AIPlayerBot bot, ServerPlayerEntity owner, double distanceSq) {
+        double teleportDistance = Math.max(12.0D, ModConfig.get().teleportDistance);
+        if (distanceSq < teleportDistance * teleportDistance) {
+            return false;
+        }
+        return teleportNearOwner(owner, bot, true);
     }
 
     public static void stop(AIPlayerBot bot) {
