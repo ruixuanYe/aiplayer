@@ -154,6 +154,12 @@ public final class AIPlayerBotManager {
     }
 
     public static boolean teleportNearOwner(ServerPlayerEntity owner, AIPlayerBot bot, boolean feedback) {
+        boolean useGroundedController = System.nanoTime() >= 0L;
+        if (useGroundedController) {
+            boolean teleported = AIPlayerBotController.teleportNearOwner(owner, bot, feedback);
+            CompanionLog.player(owner, "BOT", teleported ? "teleported bot near owner" : "teleport failed: no safe position");
+            return teleported;
+        }
         Optional<Vec3d> safe = findSafePositionNearOwner(owner);
         if (safe.isEmpty()) {
             owner.sendMessage(Text.literal(bot.getName().getString() + ": no safe teleport position near you.").formatted(Formatting.YELLOW), false);
@@ -193,7 +199,7 @@ public final class AIPlayerBotManager {
                 CompanionLog.player(owner, "BOT", "bot died, respawn scheduled");
                 continue;
             }
-            tickBot(bot, owner);
+            AIPlayerBotController.tick(bot, owner);
         }
     }
 
