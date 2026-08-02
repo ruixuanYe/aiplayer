@@ -1,13 +1,16 @@
 package com.aiplayercompanion.bot;
 
 import com.mojang.authlib.GameProfile;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.c2s.common.SyncedClientOptions;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.ArrayList;
@@ -157,6 +160,37 @@ public class AIPlayerBot extends ServerPlayerEntity {
 
     public void markAttacked(long tick) {
         lastAttackTick = tick;
+    }
+
+    @Override
+    public ItemStack getEquippedStack(EquipmentSlot slot) {
+        return switch (slot) {
+            case MAINHAND -> getInventory().getStack(getInventory().getSelectedSlot());
+            case OFFHAND -> getInventory().getStack(40);
+            case FEET, LEGS, CHEST, HEAD -> getInventory().getStack(slot.getOffsetEntitySlotId(36));
+            default -> super.getEquippedStack(slot);
+        };
+    }
+
+    @Override
+    public void equipStack(EquipmentSlot slot, ItemStack stack) {
+        switch (slot) {
+            case MAINHAND -> getInventory().setStack(getInventory().getSelectedSlot(), stack);
+            case OFFHAND -> getInventory().setStack(40, stack);
+            case FEET, LEGS, CHEST, HEAD -> getInventory().setStack(slot.getOffsetEntitySlotId(36), stack);
+            default -> super.equipStack(slot, stack);
+        }
+        getInventory().markDirty();
+        currentScreenHandler.sendContentUpdates();
+    }
+
+    @Override
+    public void setStackInHand(Hand hand, ItemStack stack) {
+        if (hand == Hand.MAIN_HAND) {
+            equipStack(EquipmentSlot.MAINHAND, stack);
+        } else {
+            equipStack(EquipmentSlot.OFFHAND, stack);
+        }
     }
 
     @Override

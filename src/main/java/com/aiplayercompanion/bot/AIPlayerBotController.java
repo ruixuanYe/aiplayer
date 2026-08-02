@@ -9,6 +9,7 @@ import net.minecraft.entity.MovementType;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.mob.HostileEntity;
+import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.item.AxeItem;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -85,7 +86,7 @@ final class AIPlayerBotController {
         }
 
         if (ModConfig.get().botAutoCombat || ModConfig.get().botProtectOwner) {
-            Optional<HostileEntity> threat = findThreat(owner, bot);
+            Optional<LivingEntity> threat = findThreat(owner, bot);
             if (threat.isPresent() && engageThreat(bot, owner, threat.get(), now)) {
                 return;
             }
@@ -119,51 +120,49 @@ final class AIPlayerBotController {
         followPath(bot, owner, target.get(), ownerDistanceSq, now);
     }
 
-    private static Optional<HostileEntity> findThreat(ServerPlayerEntity owner, AIPlayerBot bot) {
+    private static Optional<LivingEntity> findThreat(ServerPlayerEntity owner, AIPlayerBot bot) {
         ServerWorld world = owner.getWorld();
         Box scanBox = owner.getBoundingBox().expand(DEFEND_SCAN_RANGE);
-        List<HostileEntity> hostiles = world.getEntitiesByClass(HostileEntity.class, scanBox, hostile ->
-                hostile.isAlive()
-                        && !hostile.isRemoved()
-                        && hostile.squaredDistanceTo(owner) <= DEFEND_SCAN_RANGE * DEFEND_SCAN_RANGE
-                        && hasLineOrClose(owner, bot, hostile)
-                        && shouldEngageHostile(owner, hostile));
-        HostileEntity best = null;
+        List<MobEntity> hostiles = world.getEntitiesByClass(MobEntity.class, scanBox, mob ->
+                mob.isAlive()
+                        && !mob.isRemoved()
+                        && mob.squaredDistanceTo(owner) <= DEFEND_SCAN_RANGE * DEFEND_SCAN_RANGE
+                        && hasLineOrClose(owner, bot, mob)
+                        && shouldEngageMob(owner, mob));
+        LivingEntity best = null;
         double bestScore = Double.MAX_VALUE;
-        for (HostileEntity hostile : hostiles) {
-            double ownerDistance = hostile.squaredDistanceTo(owner);
-            double botDistance = hostile.squaredDistanceTo(bot);
-            LivingEntity target = hostile.getTarget();
+        for (MobEntity mob : hostiles) {
+            double ownerDistance = mob.squaredDistanceTo(owner);
+            double botDistance = mob.squaredDistanceTo(bot);
+            LivingEntity target = mob.getTarget();
             double score = ownerDistance + botDistance * 0.35D;
             if (target != null && target.getUuid().equals(owner.getUuid())) {
                 score -= 80.0D;
             }
             if (score < bestScore) {
-                best = hostile;
+                best = mob;
                 bestScore = score;
             }
         }
         return Optional.ofNullable(best);
     }
 
-    private static boolean shouldEngageHostile(ServerPlayerEntity owner, HostileEntity hostile) {
-        if (ModConfig.get().botAutoCombat) {
+    private static boolean shouldEngageMob(ServerPlayerEntity owner, MobEntity mob) {
+        LivingEntity target = mob.getTarget();
+        boolean targetsOwner = target != null && target.getUuid().equals(owner.getUuid());
+        if (targetsOwner) {
             return true;
         }
-        if (!ModConfig.get().botProtectOwner) {
-            return false;
-        }
-        LivingEntity target = hostile.getTarget();
-        return target != null && target.getUuid().equals(owner.getUuid());
+        return ModConfig.get().botAutoCombat && mob instanceof HostileEntity;
     }
 
-    private static boolean hasLineOrClose(ServerPlayerEntity owner, AIPlayerBot bot, HostileEntity hostile) {
-        return hostile.squaredDistanceTo(owner) < 36.0D
-                || hostile.squaredDistanceTo(bot) < 36.0D
-                || hostile.canSee(owner);
+    private static boolean hasLineOrClose(ServerPlayerEntity owner, AIPlayerBot bot, MobEntity mob) {
+        return mob.squaredDistanceTo(owner) < 36.0D
+                || mob.squaredDistanceTo(bot) < 36.0D
+                || mob.canSee(owner);
     }
 
-    private static boolean engageThreat(AIPlayerBot bot, ServerPlayerEntity owner, HostileEntity hostile, long now) {
+    private static boolean engageThreat(AIPlayerBot bot, ServerPlayerEntity owner, LivingEntity hostile, long now) {
         bot.setSneaking(false);
         double distanceSq = bot.squaredDistanceTo(hostile);
         if (distanceSq <= ATTACK_REACH * ATTACK_REACH) {
@@ -436,8 +435,15 @@ final class AIPlayerBotController {
                 ? Vec3d.ZERO
                 : horizontal.normalize().multiply(Math.min(speed, horizontalLength));
         double verticalMove = verticalMoveFor(bot, delta.y);
-        if (verticalMove <= 0.0D && shouldHopToward(bot, horizontal, delta.y)) {
+        boolean shouldJump = verticalMove > 0.0D || shouldHopToward(bot, horizontal, delta.y);
+        if (shouldJump && bot.isOnGround()) {
+            bot.setJumping(true);
+            bot.jump();
+            verticalMove = Math.max(JUMP_STEP, bot.getVelocity().y);
+        } else if (verticalMove <= 0.0D && shouldHopToward(bot, horizontal, delta.y)) {
             verticalMove = JUMP_STEP;
+        } else {
+            bot.setJumping(false);
         }
         Vec3d movement = new Vec3d(horizontalMove.x, verticalMove, horizontalMove.z);
         Vec3d before = bot.getPos();
@@ -585,8 +591,11 @@ final class AIPlayerBotController {
             return false;
         }
         Vec3d push = direction.normalize().multiply(0.18D);
-        bot.setVelocity(push.x, JUMP_STEP, push.z);
-        bot.move(MovementType.SELF, new Vec3d(push.x, JUMP_STEP, push.z));
+        bot.setJumping(true);
+        bot.jump();
+        double jumpY = Math.max(JUMP_STEP, bot.getVelocity().y);
+        bot.setVelocity(push.x, jumpY, push.z);
+        bot.move(MovementType.SELF, new Vec3d(push.x, jumpY, push.z));
         return true;
     }
 
