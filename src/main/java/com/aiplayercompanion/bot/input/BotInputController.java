@@ -18,7 +18,6 @@ import java.util.UUID;
 public final class BotInputController {
     private static final double REACHED_SQ = 1.0D;
     private static final double STUCK_EPSILON_SQ = 0.0025D;
-    private static final double EXTERNAL_VELOCITY_SQ = 0.045D;
     private static final int STUCK_JUMP_TICKS = 8;
     private final Map<UUID, MoveMemory> memories = new HashMap<>();
 
@@ -57,6 +56,8 @@ public final class BotInputController {
         bot.setSneaking(false);
         bot.setSprinting(sprint && bot.isOnGround());
         bot.setMovementSpeed(sprint ? 0.135F : 0.1F);
+        bot.sidewaysSpeed = 0.0F;
+        bot.forwardSpeed = 1.0F;
 
         boolean shouldJump = shouldJump(bot, horizontal) || (stuck && now - bot.getLastJumpAttemptTick() > STUCK_JUMP_TICKS);
         bot.setJumping(shouldJump);
@@ -65,8 +66,8 @@ public final class BotInputController {
             bot.markJumpAttempt(now);
         }
 
-        // PlayerEntity.travel consumes movement input and lets vanilla physics handle collision, gravity and knockback.
-        bot.travel(new Vec3d(0.0D, 0.0D, 1.0D));
+        // Consume vanilla movement input immediately because fake players do not have a real client packet loop.
+        bot.tickMovement();
         memories.put(bot.getUuid(), new MoveMemory(bot.getPos(), now));
     }
 
@@ -79,13 +80,15 @@ public final class BotInputController {
     public void stopInputs(AIPlayerBot bot) {
         bot.setJumping(false);
         bot.setSprinting(false);
+        bot.sidewaysSpeed = 0.0F;
+        bot.forwardSpeed = 0.0F;
         bot.setMovementSpeed(0.0F);
     }
 
     public void tickVanillaPhysics(AIPlayerBot bot) {
         enforceSurvivalBody(bot);
         stopInputs(bot);
-        bot.travel(Vec3d.ZERO);
+        bot.tickMovement();
     }
 
     public void lookAt(AIPlayerBot bot, Entity entity, float fallbackYaw) {
@@ -158,9 +161,7 @@ public final class BotInputController {
         if (!bot.isOnGround() && !isOnClimbable(bot) && !bot.isTouchingWater()) {
             return true;
         }
-        Vec3d velocity = bot.getVelocity();
-        double horizontalVelocitySq = velocity.x * velocity.x + velocity.z * velocity.z;
-        return horizontalVelocitySq > EXTERNAL_VELOCITY_SQ && bot.age > 20;
+        return false;
     }
 
     private boolean isOnClimbable(AIPlayerBot bot) {

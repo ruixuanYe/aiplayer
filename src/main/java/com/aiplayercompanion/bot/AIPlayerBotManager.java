@@ -94,6 +94,7 @@ public final class AIPlayerBotManager {
         ModConfig.save();
         try {
             server.getPlayerManager().onPlayerConnect(new DummyClientConnection(), bot, ConnectedClientData.createDefault(profile, false));
+            bot.installFakeNetworkHandler();
         } catch (Throwable throwable) {
             ServerPlayerEntity listed = server.getPlayerManager().getPlayer(botUuid);
             if (!(listed instanceof AIPlayerBot)) {
@@ -102,6 +103,7 @@ public final class AIPlayerBotManager {
                 throw throwable;
             }
             AIPlayerCompanionMod.LOGGER.warn("Player bot connect completed with a recoverable sync error: {}", throwable.toString());
+            bot.installFakeNetworkHandler();
         }
         reviveVisualState(bot);
         bot.refreshPositionAndAngles(position.x, position.y, position.z, owner.getYaw(), 0.0F);

@@ -2,6 +2,7 @@ package com.aiplayercompanion.bot;
 
 import com.mojang.authlib.GameProfile;
 import com.mojang.datafixers.util.Pair;
+import net.fabricmc.fabric.impl.event.interaction.FakePlayerNetworkHandler;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.damage.DamageSource;
@@ -46,6 +47,11 @@ public class AIPlayerBot extends ServerPlayerEntity {
     public AIPlayerBot(MinecraftServer server, ServerWorld world, GameProfile profile, UUID ownerUuid) {
         super(server, world, profile, SyncedClientOptions.createDefault());
         this.ownerUuid = ownerUuid;
+        installFakeNetworkHandler();
+    }
+
+    public void installFakeNetworkHandler() {
+        this.networkHandler = new FakePlayerNetworkHandler(this);
     }
 
     public UUID getOwnerUuid() {
