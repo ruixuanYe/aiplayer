@@ -1,7 +1,7 @@
 package com.aiplayercompanion.bot;
 
-import com.aiplayercompanion.bot.navigation.BotNavigationController;
-import com.aiplayercompanion.bot.navigation.BotPathingUtil;
+import com.aiplayercompanion.bot.serverpath.CollisionValidator;
+import com.aiplayercompanion.bot.serverpath.ServerBotNavigator;
 import com.aiplayercompanion.config.ModConfig;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.ItemEntity;
@@ -27,19 +27,20 @@ final class AIPlayerBotController {
     private static final double ATTACK_REACH = 2.8D;
     private static final double PICKUP_SCAN_RANGE = 7.0D;
     private static final double PICKUP_REACH = 1.8D;
+    private static final ServerBotNavigator NAVIGATOR = new ServerBotNavigator();
 
     private AIPlayerBotController() {
     }
 
     static void tick(AIPlayerBot bot, ServerPlayerEntity owner) {
         long now = owner.getWorld().getTime();
-        BotNavigationController.enforceSurvivalBody(bot);
+        NAVIGATOR.enforceSurvivalBody(bot);
         handleInventory(bot);
 
         if (bot.getBotState() == AIPlayerBot.BotState.WAITING) {
-            BotNavigationController.stop(bot);
+            NAVIGATOR.stop(bot);
             bot.setSneaking(true);
-            BotNavigationController.idleLook(bot, owner, now);
+            NAVIGATOR.idleLook(bot, owner, now);
             return;
         }
 
@@ -71,20 +72,20 @@ final class AIPlayerBotController {
 
         double stopDistance = Math.max(ModConfig.get().stopFollowDistance, bot.getStopDistance());
         if (ownerDistanceSq <= stopDistance * stopDistance) {
-            BotNavigationController.stop(bot);
+            NAVIGATOR.stop(bot);
             bot.setSneaking(false);
-            BotNavigationController.idleLook(bot, owner, now);
+            NAVIGATOR.idleLook(bot, owner, now);
             return;
         }
 
-        Optional<BlockPos> target = BotNavigationController.chooseFollowTarget(owner, bot);
+        Optional<BlockPos> target = NAVIGATOR.chooseFollowTarget(owner, bot);
         if (target.isEmpty()) {
-            BotNavigationController.stop(bot);
-            BotNavigationController.lookTowardYaw(bot, owner.getYaw());
+            NAVIGATOR.stop(bot);
+            NAVIGATOR.lookTowardYaw(bot, owner.getYaw());
             return;
         }
 
-        BotNavigationController.moveTo(bot, owner, target.get(), stopDistance, ownerDistanceSq, now);
+        NAVIGATOR.moveTo(bot, owner, target.get(), stopDistance, ownerDistanceSq, now);
     }
 
     private static Optional<LivingEntity> findThreat(ServerPlayerEntity owner, AIPlayerBot bot) {
@@ -132,8 +133,8 @@ final class AIPlayerBotController {
         bot.setSneaking(false);
         double distanceSq = bot.squaredDistanceTo(hostile);
         if (distanceSq <= ATTACK_REACH * ATTACK_REACH) {
-            BotNavigationController.stop(bot);
-            BotNavigationController.lookAtEntity(bot, hostile, bot.getYaw());
+            NAVIGATOR.stop(bot);
+            NAVIGATOR.lookAtEntity(bot, hostile, bot.getYaw());
             if (bot.canAttackAt(now)) {
                 selectBestWeapon(bot);
                 bot.attack(hostile);
@@ -143,11 +144,11 @@ final class AIPlayerBotController {
             return true;
         }
 
-        Optional<BlockPos> target = BotPathingUtil.findGroundLanding(owner.getWorld(), hostile.getBlockPos(), 8);
+        Optional<BlockPos> target = CollisionValidator.findStandable(owner.getWorld(), hostile.getBlockPos(), 8, false);
         if (target.isEmpty()) {
             return false;
         }
-        return BotNavigationController.moveTo(bot, owner, target.get(), 2.2D, distanceSq, now);
+        return NAVIGATOR.moveTo(bot, owner, target.get(), 2.2D, distanceSq, now);
     }
 
     private static void handleInventory(AIPlayerBot bot) {
@@ -198,14 +199,14 @@ final class AIPlayerBotController {
     private static boolean moveToPickup(AIPlayerBot bot, ServerPlayerEntity owner, ItemEntity item, long now) {
         double distanceSq = bot.squaredDistanceTo(item);
         if (distanceSq <= PICKUP_REACH * PICKUP_REACH) {
-            BotNavigationController.stop(bot);
+            NAVIGATOR.stop(bot);
             pickupNearbyItems(bot);
             handleInventory(bot);
             return true;
         }
 
-        Optional<BlockPos> target = BotPathingUtil.findGroundLanding(owner.getWorld(), item.getBlockPos(), 8);
-        return target.isPresent() && BotNavigationController.moveTo(bot, owner, target.get(), 1.4D, distanceSq, now);
+        Optional<BlockPos> target = CollisionValidator.findStandable(owner.getWorld(), item.getBlockPos(), 8, false);
+        return target.isPresent() && NAVIGATOR.moveTo(bot, owner, target.get(), 1.4D, distanceSq, now);
     }
 
     private static boolean isUsefulPickup(ItemStack stack) {
@@ -331,10 +332,10 @@ final class AIPlayerBotController {
     }
 
     static boolean teleportNearOwner(ServerPlayerEntity owner, AIPlayerBot bot, boolean feedback) {
-        return BotNavigationController.teleportNearOwner(owner, bot, feedback);
+        return NAVIGATOR.teleportNearOwner(owner, bot, feedback);
     }
 
     static void discardNavigationProxy(AIPlayerBot bot) {
-        BotNavigationController.stop(bot);
+        NAVIGATOR.stop(bot);
     }
 }
