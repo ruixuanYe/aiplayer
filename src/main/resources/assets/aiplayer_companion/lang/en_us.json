@@ -1,0 +1,15 @@
+{
+  "entity.aiplayer_companion.ai_player": "AI Companion",
+  "command.aiplayer.spawned": "AI companion spawned.",
+  "command.aiplayer.already_exists": "You already have an AI companion.",
+  "command.aiplayer.not_found": "No AI companion bound to you was found.",
+  "command.aiplayer.follow": "AI companion is following you.",
+  "command.aiplayer.stop": "AI companion is waiting here.",
+  "command.aiplayer.come": "AI companion is coming to you.",
+  "command.aiplayer.removed": "AI companion removed.",
+  "command.aiplayer.chat_disabled": "AI chat is disabled in the config.",
+  "command.aiplayer.chat_unavailable": "LM Studio is unavailable right now.",
+  "command.aiplayer.chat_empty": "AI returned no displayable content.",
+  "category.aiplayer_companion": "AIPlayer Companion",
+  "key.aiplayer_companion.open_config": "Open AIPlayer Settings"
+}

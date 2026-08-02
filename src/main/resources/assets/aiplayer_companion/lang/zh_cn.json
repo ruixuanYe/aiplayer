@@ -1,0 +1,15 @@
+{
+  "entity.aiplayer_companion.ai_player": "AI 伙伴",
+  "command.aiplayer.spawned": "AI 伙伴已生成。",
+  "command.aiplayer.already_exists": "你已经拥有一个 AI 伙伴了。",
+  "command.aiplayer.not_found": "没有找到你的 AI 伙伴。",
+  "command.aiplayer.follow": "AI 伙伴开始跟随你。",
+  "command.aiplayer.stop": "AI 伙伴正在原地等待。",
+  "command.aiplayer.come": "AI 伙伴正在过来。",
+  "command.aiplayer.removed": "AI 伙伴已删除。",
+  "command.aiplayer.chat_disabled": "AI 聊天已在配置中关闭。",
+  "command.aiplayer.chat_unavailable": "LM Studio 暂时不可用。",
+  "command.aiplayer.chat_empty": "AI 没有返回可显示的内容。",
+  "category.aiplayer_companion": "AIPlayer Companion",
+  "key.aiplayer_companion.open_config": "打开 AIPlayer 设置"
+}

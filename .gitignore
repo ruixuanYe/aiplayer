@@ -1,0 +1,7 @@
+.gradle/
+build/
+.jdk/
+.jdk-ms/
+run/
+backups/
+*.log

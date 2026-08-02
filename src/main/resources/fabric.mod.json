@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "aiplayer_companion",
+  "version": "${version}",
+  "name": "AIPlayer Companion",
+  "description": "A small Fabric AI companion entity that follows its owner and chats through LM Studio.",
+  "authors": [
+    "Ye Ruixuan"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/aiplayer_companion/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.aiplayercompanion.AIPlayerCompanionMod"
+    ],
+    "client": [
+      "com.aiplayercompanion.AIPlayerCompanionClient"
+    ],
+    "modmenu": [
+      "com.aiplayercompanion.client.AIPlayerModMenuIntegration"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.17.2",
+    "minecraft": "~1.21.8",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
