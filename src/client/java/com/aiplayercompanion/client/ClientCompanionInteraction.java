@@ -31,7 +31,7 @@ public final class ClientCompanionInteraction {
                 return;
             }
             while (openConfigKey.wasPressed()) {
-                client.setScreen(new AIPlayerConfigScreen(null));
+                client.setScreen(new CompanionMenuScreen());
             }
         });
     }

@@ -40,6 +40,11 @@ public class AIPlayerCommand {
                 .then(literal("menu").executes(context -> menu(context.getSource())))
                 .then(literal("rename-auto").executes(context -> renameAuto(context.getSource())))
                 .then(literal("status").executes(context -> status(context.getSource())))
+                .then(literal("behavior")
+                        .then(literal("combat").executes(context -> toggleBehavior(context.getSource(), "combat")))
+                        .then(literal("pickup").executes(context -> toggleBehavior(context.getSource(), "pickup")))
+                        .then(literal("equip").executes(context -> toggleBehavior(context.getSource(), "equip")))
+                        .then(literal("weapon").executes(context -> toggleBehavior(context.getSource(), "weapon"))))
                 .then(literal("config")
                         .then(literal("show").executes(context -> configShow(context.getSource())))
                         .then(literal("api").then(argument("url", StringArgumentType.greedyString()).executes(context -> configApi(
@@ -164,6 +169,45 @@ public class AIPlayerCommand {
                 + "API Key：" + apiKeyStatus;
         source.sendFeedback(() -> Text.literal(text).formatted(Formatting.AQUA), false);
         CompanionLog.player(player, "CONFIG", "show api config");
+        return 1;
+    }
+
+    private static int toggleBehavior(ServerCommandSource source, String key) {
+        ServerPlayerEntity player = requirePlayer(source);
+        if (player == null) {
+            return 0;
+        }
+        ModConfig config = ModConfig.get();
+        String label;
+        boolean enabled;
+        switch (key) {
+            case "combat" -> {
+                config.botAutoCombat = !config.botAutoCombat;
+                enabled = config.botAutoCombat;
+                label = "主动攻击";
+            }
+            case "pickup" -> {
+                config.botAutoPickup = !config.botAutoPickup;
+                enabled = config.botAutoPickup;
+                label = "自动拾取";
+            }
+            case "equip" -> {
+                config.botAutoEquip = !config.botAutoEquip;
+                enabled = config.botAutoEquip;
+                label = "自动装备";
+            }
+            case "weapon" -> {
+                config.botAutoWeapon = !config.botAutoWeapon;
+                enabled = config.botAutoWeapon;
+                label = "自动选武器";
+            }
+            default -> {
+                return 0;
+            }
+        }
+        ModConfig.save();
+        CompanionLog.player(player, "BEHAVIOR", key + " -> " + enabled);
+        source.sendFeedback(() -> Text.literal(label + "：" + (enabled ? "开启" : "关闭")).formatted(enabled ? Formatting.GREEN : Formatting.YELLOW), false);
         return 1;
     }
 

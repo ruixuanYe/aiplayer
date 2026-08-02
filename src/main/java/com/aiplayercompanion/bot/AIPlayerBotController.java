@@ -6,7 +6,12 @@ import net.minecraft.block.Blocks;
 import net.minecraft.block.DoorBlock;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.MovementType;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.mob.HostileEntity;
+import net.minecraft.item.AxeItem;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.network.packet.s2c.play.PositionFlag;
 import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.registry.tag.FluidTags;
@@ -41,6 +46,7 @@ final class AIPlayerBotController {
     private static final double GRAVITY_STEP = -0.08D;
     private static final double DEFEND_SCAN_RANGE = 12.0D;
     private static final double ATTACK_REACH = 2.8D;
+    private static final double PICKUP_RANGE = 2.2D;
 
     private AIPlayerBotController() {
     }
@@ -48,6 +54,7 @@ final class AIPlayerBotController {
     static void tick(AIPlayerBot bot, ServerPlayerEntity owner) {
         long now = owner.getWorld().getTime();
         enforceSurvivalBody(bot);
+        handleInventory(bot);
 
         if (bot.getBotState() == AIPlayerBot.BotState.WAITING) {
             stopOnGround(bot);
@@ -68,9 +75,11 @@ final class AIPlayerBotController {
             return;
         }
 
-        Optional<HostileEntity> threat = findThreat(owner, bot);
-        if (threat.isPresent() && engageThreat(bot, owner, threat.get(), now)) {
-            return;
+        if (ModConfig.get().botAutoCombat) {
+            Optional<HostileEntity> threat = findThreat(owner, bot);
+            if (threat.isPresent() && engageThreat(bot, owner, threat.get(), now)) {
+                return;
+            }
         }
 
         double stopDistance = Math.max(ModConfig.get().stopFollowDistance, bot.getStopDistance());
@@ -146,6 +155,7 @@ final class AIPlayerBotController {
             stopCombatMovement(bot);
             lookAtEntity(bot, hostile, bot.getYaw());
             if (bot.canAttackAt(now)) {
+                selectBestWeapon(bot);
                 bot.attack(hostile);
                 bot.swingHand(Hand.MAIN_HAND);
                 bot.markAttacked(now);
@@ -166,6 +176,128 @@ final class AIPlayerBotController {
         }
         followPath(bot, owner, target.get(), distanceSq, now);
         return true;
+    }
+
+    private static void handleInventory(AIPlayerBot bot) {
+        if (ModConfig.get().botAutoPickup) {
+            pickupNearbyItems(bot);
+        }
+        if (ModConfig.get().botAutoEquip) {
+            equipBestArmor(bot);
+        }
+        if (ModConfig.get().botAutoWeapon) {
+            selectBestWeapon(bot);
+        }
+    }
+
+    private static void pickupNearbyItems(AIPlayerBot bot) {
+        Box box = bot.getBoundingBox().expand(PICKUP_RANGE);
+        List<ItemEntity> items = bot.getWorld().getEntitiesByClass(ItemEntity.class, box, item ->
+                item.isAlive() && !item.isRemoved() && !item.getStack().isEmpty());
+        for (ItemEntity item : items) {
+            ItemStack stack = item.getStack();
+            ItemStack before = stack.copy();
+            boolean inserted = bot.getInventory().insertStack(stack);
+            if (!inserted && stack.getCount() == before.getCount()) {
+                continue;
+            }
+            bot.sendPickup(item, before.getCount() - stack.getCount());
+            if (stack.isEmpty()) {
+                item.discard();
+            } else {
+                item.setStack(stack);
+            }
+        }
+    }
+
+    private static void equipBestArmor(AIPlayerBot bot) {
+        for (EquipmentSlot slot : List.of(EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET)) {
+            int bestSlot = -1;
+            int bestScore = armorScore(bot.getEquippedStack(slot), slot);
+            for (int i = 0; i < bot.getInventory().size(); i++) {
+                ItemStack stack = bot.getInventory().getStack(i);
+                int score = armorScore(stack, slot);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestSlot = i;
+                }
+            }
+            if (bestSlot >= 0) {
+                ItemStack current = bot.getEquippedStack(slot);
+                ItemStack replacement = bot.getInventory().removeStack(bestSlot, 1);
+                bot.equipStack(slot, replacement);
+                if (!current.isEmpty()) {
+                    bot.getInventory().insertStack(current);
+                }
+            }
+        }
+    }
+
+    private static int armorScore(ItemStack stack, EquipmentSlot slot) {
+        if (slot == EquipmentSlot.HEAD) {
+            if (stack.isOf(Items.NETHERITE_HELMET)) return 600;
+            if (stack.isOf(Items.DIAMOND_HELMET)) return 500;
+            if (stack.isOf(Items.IRON_HELMET)) return 400;
+            if (stack.isOf(Items.CHAINMAIL_HELMET)) return 350;
+            if (stack.isOf(Items.GOLDEN_HELMET)) return 300;
+            if (stack.isOf(Items.LEATHER_HELMET)) return 200;
+        } else if (slot == EquipmentSlot.CHEST) {
+            if (stack.isOf(Items.NETHERITE_CHESTPLATE)) return 600;
+            if (stack.isOf(Items.DIAMOND_CHESTPLATE)) return 500;
+            if (stack.isOf(Items.IRON_CHESTPLATE)) return 400;
+            if (stack.isOf(Items.CHAINMAIL_CHESTPLATE)) return 350;
+            if (stack.isOf(Items.GOLDEN_CHESTPLATE)) return 300;
+            if (stack.isOf(Items.LEATHER_CHESTPLATE)) return 200;
+        } else if (slot == EquipmentSlot.LEGS) {
+            if (stack.isOf(Items.NETHERITE_LEGGINGS)) return 600;
+            if (stack.isOf(Items.DIAMOND_LEGGINGS)) return 500;
+            if (stack.isOf(Items.IRON_LEGGINGS)) return 400;
+            if (stack.isOf(Items.CHAINMAIL_LEGGINGS)) return 350;
+            if (stack.isOf(Items.GOLDEN_LEGGINGS)) return 300;
+            if (stack.isOf(Items.LEATHER_LEGGINGS)) return 200;
+        } else if (slot == EquipmentSlot.FEET) {
+            if (stack.isOf(Items.NETHERITE_BOOTS)) return 600;
+            if (stack.isOf(Items.DIAMOND_BOOTS)) return 500;
+            if (stack.isOf(Items.IRON_BOOTS)) return 400;
+            if (stack.isOf(Items.CHAINMAIL_BOOTS)) return 350;
+            if (stack.isOf(Items.GOLDEN_BOOTS)) return 300;
+            if (stack.isOf(Items.LEATHER_BOOTS)) return 200;
+        }
+        return -1;
+    }
+
+    private static void selectBestWeapon(AIPlayerBot bot) {
+        int bestSlot = bot.getInventory().getSelectedSlot();
+        int bestScore = weaponScore(bot.getMainHandStack());
+        for (int i = 0; i < 9; i++) {
+            ItemStack stack = bot.getInventory().getStack(i);
+            int score = weaponScore(stack);
+            if (score > bestScore) {
+                bestScore = score;
+                bestSlot = i;
+            }
+        }
+        bot.getInventory().setSelectedSlot(bestSlot);
+    }
+
+    private static int weaponScore(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return 0;
+        }
+        if (stack.isOf(Items.NETHERITE_SWORD)) return 1000;
+        if (stack.isOf(Items.DIAMOND_SWORD)) return 900;
+        if (stack.isOf(Items.IRON_SWORD)) return 800;
+        if (stack.isOf(Items.STONE_SWORD)) return 700;
+        if (stack.isOf(Items.GOLDEN_SWORD)) return 650;
+        if (stack.isOf(Items.WOODEN_SWORD)) return 600;
+        if (stack.isOf(Items.NETHERITE_AXE)) return 580;
+        if (stack.isOf(Items.DIAMOND_AXE)) return 560;
+        if (stack.isOf(Items.IRON_AXE)) return 540;
+        if (stack.isOf(Items.STONE_AXE)) return 520;
+        if (stack.isOf(Items.GOLDEN_AXE)) return 500;
+        if (stack.isOf(Items.WOODEN_AXE)) return 480;
+        if (stack.getItem() instanceof AxeItem) return 400;
+        return 0;
     }
 
     private static void stopCombatMovement(AIPlayerBot bot) {

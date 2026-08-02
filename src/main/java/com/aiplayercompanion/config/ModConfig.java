@@ -43,7 +43,11 @@ public class ModConfig {
     public String companionMode = "PLAYER_BOT";
     public String botPlayerUuid = "";
     public String botState = "FOLLOWING";
-    public int configVersion = 4;
+    public boolean botAutoCombat = true;
+    public boolean botAutoPickup = true;
+    public boolean botAutoEquip = true;
+    public boolean botAutoWeapon = true;
+    public int configVersion = 5;
 
     public static ModConfig get() {
         return INSTANCE;
@@ -166,6 +170,13 @@ public class ModConfig {
                 botPlayerUuid = "";
             }
             configVersion = 4;
+        }
+        if (configVersion < 5) {
+            botAutoCombat = true;
+            botAutoPickup = true;
+            botAutoEquip = true;
+            botAutoWeapon = true;
+            configVersion = 5;
         }
         return this;
     }

@@ -52,16 +52,14 @@ public final class CompanionInteractionService {
                     serverPlayer.sendMessage(Text.literal("这不是你的 AI 伙伴。").formatted(Formatting.YELLOW), false);
                     return ActionResult.SUCCESS_SERVER;
                 }
-                openScreenOrFallbackMenu(serverPlayer);
-                return ActionResult.SUCCESS_SERVER;
+                return ActionResult.PASS;
             }
             if (entity instanceof AIPlayerBot bot) {
                 if (!bot.getOwnerUuid().equals(serverPlayer.getUuid())) {
                     serverPlayer.sendMessage(Text.literal("这不是你的 AI 伙伴。").formatted(Formatting.YELLOW), false);
                     return ActionResult.SUCCESS_SERVER;
                 }
-                openScreenOrFallbackMenu(serverPlayer);
-                return ActionResult.SUCCESS_SERVER;
+                return ActionResult.PASS;
             }
             return ActionResult.PASS;
         });
