@@ -60,7 +60,7 @@ final class AIPlayerBotController {
         if (bot.getBotState() == AIPlayerBot.BotState.WAITING) {
             stopOnGround(bot);
             bot.setSneaking(true);
-            lookAtOwner(bot, owner, bot.getYaw());
+            idleLook(bot, owner, now);
             return;
         }
 
@@ -83,7 +83,7 @@ final class AIPlayerBotController {
             }
         }
 
-        if (ModConfig.get().botAutoCombat) {
+        if (ModConfig.get().botAutoCombat || ModConfig.get().botProtectOwner) {
             Optional<HostileEntity> threat = findThreat(owner, bot);
             if (threat.isPresent() && engageThreat(bot, owner, threat.get(), now)) {
                 return;
@@ -94,13 +94,7 @@ final class AIPlayerBotController {
         if (ownerDistanceSq <= stopDistance * stopDistance) {
             stopOnGround(bot);
             bot.setSneaking(false);
-            if (bot.isLookingAround(now)) {
-                lookTowardYaw(bot, bot.getLookAroundYaw());
-            } else if (bot.shouldLookAtOwnerWhenIdle()) {
-                lookAtOwner(bot, owner, bot.getYaw());
-            } else {
-                lookTowardYaw(bot, owner.getYaw());
-            }
+            idleLook(bot, owner, now);
             return;
         }
 
@@ -131,7 +125,8 @@ final class AIPlayerBotController {
                 hostile.isAlive()
                         && !hostile.isRemoved()
                         && hostile.squaredDistanceTo(owner) <= DEFEND_SCAN_RANGE * DEFEND_SCAN_RANGE
-                        && hasLineOrClose(owner, bot, hostile));
+                        && hasLineOrClose(owner, bot, hostile)
+                        && shouldEngageHostile(owner, hostile));
         HostileEntity best = null;
         double bestScore = Double.MAX_VALUE;
         for (HostileEntity hostile : hostiles) {
@@ -148,6 +143,17 @@ final class AIPlayerBotController {
             }
         }
         return Optional.ofNullable(best);
+    }
+
+    private static boolean shouldEngageHostile(ServerPlayerEntity owner, HostileEntity hostile) {
+        if (ModConfig.get().botAutoCombat) {
+            return true;
+        }
+        if (!ModConfig.get().botProtectOwner) {
+            return false;
+        }
+        LivingEntity target = hostile.getTarget();
+        return target != null && target.getUuid().equals(owner.getUuid());
     }
 
     private static boolean hasLineOrClose(ServerPlayerEntity owner, AIPlayerBot bot, HostileEntity hostile) {
@@ -201,7 +207,7 @@ final class AIPlayerBotController {
     private static void pickupNearbyItems(AIPlayerBot bot) {
         Box box = bot.getBoundingBox().expand(PICKUP_REACH);
         List<ItemEntity> items = bot.getWorld().getEntitiesByClass(ItemEntity.class, box, item ->
-                item.isAlive() && !item.isRemoved() && isUsefulPickup(item.getStack()));
+                item.isAlive() && !item.isRemoved() && !item.getStack().isEmpty());
         for (ItemEntity item : items) {
             ItemStack stack = item.getStack();
             ItemStack before = stack.copy();
@@ -222,9 +228,14 @@ final class AIPlayerBotController {
     private static Optional<ItemEntity> findPickupTarget(AIPlayerBot bot) {
         Box box = bot.getBoundingBox().expand(PICKUP_SCAN_RANGE);
         List<ItemEntity> items = bot.getWorld().getEntitiesByClass(ItemEntity.class, box, item ->
-                item.isAlive() && !item.isRemoved() && isUsefulPickup(item.getStack()));
+                item.isAlive() && !item.isRemoved() && !item.getStack().isEmpty());
         return items.stream()
-                .min(Comparator.comparingDouble(item -> item.squaredDistanceTo(bot)));
+                .min(Comparator.comparingDouble(item -> pickupPriority(bot, item)));
+    }
+
+    private static double pickupPriority(AIPlayerBot bot, ItemEntity item) {
+        double distance = item.squaredDistanceTo(bot);
+        return isUsefulPickup(item.getStack()) ? distance * 0.25D : distance;
     }
 
     private static boolean moveToPickup(AIPlayerBot bot, ServerPlayerEntity owner, ItemEntity item, long now) {
@@ -545,6 +556,35 @@ final class AIPlayerBotController {
         bot.setVelocity(Vec3d.ZERO);
         applyGroundPhysics(bot);
         bot.velocityModified = true;
+    }
+
+    private static void idleLook(AIPlayerBot bot, ServerPlayerEntity owner, long now) {
+        if (isOwnerLookingAtBot(owner, bot)) {
+            lookAtOwner(bot, owner, bot.getYaw());
+            return;
+        }
+        if (bot.isLookingAround(now)) {
+            lookTowardYaw(bot, bot.getLookAroundYaw());
+            return;
+        }
+        if (now % 90L == Math.floorMod(bot.getUuid().getLeastSignificantBits(), 90L)) {
+            float yaw = (float) MathHelper.wrapDegrees(bot.getYaw() + 70.0F + Math.floorMod(now * 31L + bot.getUuid().getMostSignificantBits(), 120L));
+            bot.startLookingAround(now, 45);
+            lookTowardYaw(bot, yaw);
+        }
+    }
+
+    private static boolean isOwnerLookingAtBot(ServerPlayerEntity owner, AIPlayerBot bot) {
+        if (owner.squaredDistanceTo(bot) > 49.0D) {
+            return false;
+        }
+        Vec3d look = owner.getRotationVec(1.0F).normalize();
+        Vec3d toBot = bot.getEyePos().subtract(owner.getEyePos());
+        double distance = toBot.length();
+        if (distance < 0.001D) {
+            return false;
+        }
+        return look.dotProduct(toBot.normalize()) > 0.985D;
     }
 
     private static void applyGroundPhysics(AIPlayerBot bot) {

@@ -5,6 +5,7 @@ import com.aiplayercompanion.ai.LMStudioClient;
 import com.aiplayercompanion.AIPlayerCompanionMod;
 import com.aiplayercompanion.bot.AIPlayerBot;
 import com.aiplayercompanion.bot.AIPlayerBotManager;
+import com.aiplayercompanion.bot.BotInventoryView;
 import com.aiplayercompanion.config.ModConfig;
 import com.aiplayercompanion.entity.AIPlayerEntity;
 import com.aiplayercompanion.service.AIPlayerManager;
@@ -16,6 +17,8 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.screen.GenericContainerScreenHandler;
+import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
@@ -38,10 +41,12 @@ public class AIPlayerCommand {
                 .then(literal("come").executes(context -> come(context.getSource())))
                 .then(literal("remove").executes(context -> remove(context.getSource())))
                 .then(literal("menu").executes(context -> menu(context.getSource())))
+                .then(literal("inventory").executes(context -> inventory(context.getSource())))
                 .then(literal("rename-auto").executes(context -> renameAuto(context.getSource())))
                 .then(literal("status").executes(context -> status(context.getSource())))
                 .then(literal("behavior")
                         .then(literal("combat").executes(context -> toggleBehavior(context.getSource(), "combat")))
+                        .then(literal("protect").executes(context -> toggleBehavior(context.getSource(), "protect")))
                         .then(literal("pickup").executes(context -> toggleBehavior(context.getSource(), "pickup")))
                         .then(literal("equip").executes(context -> toggleBehavior(context.getSource(), "equip")))
                         .then(literal("weapon").executes(context -> toggleBehavior(context.getSource(), "weapon"))))
@@ -129,6 +134,25 @@ public class AIPlayerCommand {
         return 1;
     }
 
+    private static int inventory(ServerCommandSource source) {
+        ServerPlayerEntity player = requirePlayer(source);
+        if (player == null) {
+            return 0;
+        }
+        Optional<AIPlayerBot> bot = AIPlayerBotManager.findOwnedBot(player);
+        if (bot.isEmpty()) {
+            source.sendFeedback(() -> Text.literal("没有找到你的 AI 玩家 Bot。").formatted(Formatting.RED), false);
+            return 0;
+        }
+        AIPlayerBot entity = bot.get();
+        player.openHandledScreen(new SimpleNamedScreenHandlerFactory(
+                (syncId, inventory, p) -> GenericContainerScreenHandler.createGeneric9x6(syncId, inventory, new BotInventoryView(entity)),
+                Text.literal(entity.getName().getString() + " 背包")
+        ));
+        CompanionLog.player(player, "INVENTORY", "opened bot inventory screen");
+        return 1;
+    }
+
     private static int renameAuto(ServerCommandSource source) {
         ServerPlayerEntity player = requirePlayer(source);
         if (player == null) {
@@ -185,6 +209,11 @@ public class AIPlayerCommand {
                 config.botAutoCombat = !config.botAutoCombat;
                 enabled = config.botAutoCombat;
                 label = "主动攻击";
+            }
+            case "protect" -> {
+                config.botProtectOwner = !config.botProtectOwner;
+                enabled = config.botProtectOwner;
+                label = "保护主人";
             }
             case "pickup" -> {
                 config.botAutoPickup = !config.botAutoPickup;
