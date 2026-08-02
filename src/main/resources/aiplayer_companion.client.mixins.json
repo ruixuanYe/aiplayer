@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "com.aiplayercompanion.mixin.client",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "PlayerEntityRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

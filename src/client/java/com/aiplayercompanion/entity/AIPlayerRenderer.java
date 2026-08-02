@@ -1,6 +1,6 @@
 package com.aiplayercompanion.entity;
 
-import com.aiplayercompanion.AIPlayerCompanionMod;
+import com.aiplayercompanion.client.AIPlayerSkinResolver;
 import net.minecraft.client.render.Frustum;
 import net.minecraft.client.render.entity.EntityRendererFactory;
 import net.minecraft.client.render.entity.MobEntityRenderer;
@@ -8,11 +8,6 @@ import net.minecraft.client.render.entity.state.BipedEntityRenderState;
 import net.minecraft.util.Identifier;
 
 public class AIPlayerRenderer extends MobEntityRenderer<AIPlayerEntity, BipedEntityRenderState, AIPlayerModel> {
-    private static final Identifier TEXTURE = Identifier.of(
-            AIPlayerCompanionMod.MOD_ID,
-            "textures/entity/ai_player.png"
-    );
-
     public AIPlayerRenderer(EntityRendererFactory.Context context) {
         super(context, new AIPlayerModel(context.getPart(AIPlayerModel.MODEL_LAYER)), 0.5F);
     }
@@ -24,7 +19,7 @@ public class AIPlayerRenderer extends MobEntityRenderer<AIPlayerEntity, BipedEnt
 
     @Override
     public Identifier getTexture(BipedEntityRenderState state) {
-        return TEXTURE;
+        return AIPlayerSkinResolver.textureForCurrentModel();
     }
 
     @Override

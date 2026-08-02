@@ -15,6 +15,19 @@ public final class ModelNameUtil {
         return displayNameFromModel(ModConfig.get().modelName);
     }
 
+    public static String botPlayerName() {
+        String cleaned = companionName()
+                .replaceAll("[^A-Za-z0-9_]", "")
+                .strip();
+        if (cleaned.isBlank()) {
+            cleaned = "AIPlayer";
+        }
+        if (cleaned.length() > 16) {
+            cleaned = cleaned.substring(0, 16);
+        }
+        return cleaned.toLowerCase(Locale.ROOT).startsWith("ai") ? cleaned : "AI" + cleaned;
+    }
+
     public static String displayNameFromModel(String modelId) {
         String value = modelId == null ? "" : modelId.strip();
         if (value.isBlank() || value.equals("local-model")) {

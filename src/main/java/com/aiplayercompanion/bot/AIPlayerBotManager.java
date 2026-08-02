@@ -36,7 +36,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.PriorityQueue;
@@ -621,16 +620,7 @@ public final class AIPlayerBotManager {
     }
 
     private static String botPlayerName() {
-        String cleaned = ModelNameUtil.companionName()
-                .replaceAll("[^A-Za-z0-9_]", "")
-                .strip();
-        if (cleaned.isBlank()) {
-            cleaned = "AIPlayer";
-        }
-        if (cleaned.length() > 16) {
-            cleaned = cleaned.substring(0, 16);
-        }
-        return cleaned.toLowerCase(Locale.ROOT).startsWith("ai") ? cleaned : "AI" + cleaned;
+        return ModelNameUtil.botPlayerName();
     }
 
     private static Optional<Vec3d> findSafePositionNearOwner(ServerPlayerEntity owner) {
