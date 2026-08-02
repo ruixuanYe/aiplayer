@@ -46,7 +46,8 @@ final class AIPlayerBotController {
     private static final double GRAVITY_STEP = -0.08D;
     private static final double DEFEND_SCAN_RANGE = 12.0D;
     private static final double ATTACK_REACH = 2.8D;
-    private static final double PICKUP_RANGE = 2.2D;
+    private static final double PICKUP_SCAN_RANGE = 7.0D;
+    private static final double PICKUP_REACH = 1.8D;
 
     private AIPlayerBotController() {
     }
@@ -73,6 +74,13 @@ final class AIPlayerBotController {
         if (ownerDistanceSq > teleportDistance * teleportDistance) {
             teleportNearOwner(owner, bot, true);
             return;
+        }
+
+        if (ModConfig.get().botAutoPickup) {
+            Optional<ItemEntity> pickupTarget = findPickupTarget(bot);
+            if (pickupTarget.isPresent() && moveToPickup(bot, owner, pickupTarget.get(), now)) {
+                return;
+            }
         }
 
         if (ModConfig.get().botAutoCombat) {
@@ -191,9 +199,9 @@ final class AIPlayerBotController {
     }
 
     private static void pickupNearbyItems(AIPlayerBot bot) {
-        Box box = bot.getBoundingBox().expand(PICKUP_RANGE);
+        Box box = bot.getBoundingBox().expand(PICKUP_REACH);
         List<ItemEntity> items = bot.getWorld().getEntitiesByClass(ItemEntity.class, box, item ->
-                item.isAlive() && !item.isRemoved() && !item.getStack().isEmpty());
+                item.isAlive() && !item.isRemoved() && isUsefulPickup(item.getStack()));
         for (ItemEntity item : items) {
             ItemStack stack = item.getStack();
             ItemStack before = stack.copy();
@@ -208,13 +216,60 @@ final class AIPlayerBotController {
                 item.setStack(stack);
             }
         }
+        bot.getInventory().markDirty();
+    }
+
+    private static Optional<ItemEntity> findPickupTarget(AIPlayerBot bot) {
+        Box box = bot.getBoundingBox().expand(PICKUP_SCAN_RANGE);
+        List<ItemEntity> items = bot.getWorld().getEntitiesByClass(ItemEntity.class, box, item ->
+                item.isAlive() && !item.isRemoved() && isUsefulPickup(item.getStack()));
+        return items.stream()
+                .min(Comparator.comparingDouble(item -> item.squaredDistanceTo(bot)));
+    }
+
+    private static boolean moveToPickup(AIPlayerBot bot, ServerPlayerEntity owner, ItemEntity item, long now) {
+        double distanceSq = bot.squaredDistanceTo(item);
+        if (distanceSq <= PICKUP_REACH * PICKUP_REACH) {
+            stopOnGround(bot);
+            pickupNearbyItems(bot);
+            if (ModConfig.get().botAutoEquip) {
+                equipBestArmor(bot);
+            }
+            if (ModConfig.get().botAutoWeapon) {
+                selectBestWeapon(bot);
+            }
+            return true;
+        }
+
+        Optional<BlockPos> target = findGroundLanding(owner.getWorld(), item.getBlockPos(), 4);
+        if (target.isEmpty()) {
+            return false;
+        }
+        if (shouldRepath(bot, target.get(), now)) {
+            List<BlockPos> path = findPath(owner.getWorld(), bot.getBlockPos(), target.get());
+            if (path.isEmpty()) {
+                return false;
+            }
+            bot.setPath(path, target.get(), now);
+        }
+        followPath(bot, owner, target.get(), distanceSq, now);
+        return true;
+    }
+
+    private static boolean isUsefulPickup(ItemStack stack) {
+        return weaponScore(stack) > 0
+                || armorScore(stack, EquipmentSlot.HEAD) > 0
+                || armorScore(stack, EquipmentSlot.CHEST) > 0
+                || armorScore(stack, EquipmentSlot.LEGS) > 0
+                || armorScore(stack, EquipmentSlot.FEET) > 0;
     }
 
     private static void equipBestArmor(AIPlayerBot bot) {
         for (EquipmentSlot slot : List.of(EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET)) {
+            int armorSlot = armorInventorySlot(slot);
             int bestSlot = -1;
-            int bestScore = armorScore(bot.getEquippedStack(slot), slot);
-            for (int i = 0; i < bot.getInventory().size(); i++) {
+            int bestScore = armorScore(bot.getInventory().getStack(armorSlot), slot);
+            for (int i = 0; i < 36; i++) {
                 ItemStack stack = bot.getInventory().getStack(i);
                 int score = armorScore(stack, slot);
                 if (score > bestScore) {
@@ -223,14 +278,25 @@ final class AIPlayerBotController {
                 }
             }
             if (bestSlot >= 0) {
-                ItemStack current = bot.getEquippedStack(slot);
+                ItemStack current = bot.getInventory().getStack(armorSlot);
                 ItemStack replacement = bot.getInventory().removeStack(bestSlot, 1);
-                bot.equipStack(slot, replacement);
+                bot.getInventory().setStack(armorSlot, replacement);
                 if (!current.isEmpty()) {
                     bot.getInventory().insertStack(current);
                 }
+                bot.getInventory().markDirty();
             }
         }
+    }
+
+    private static int armorInventorySlot(EquipmentSlot slot) {
+        return switch (slot) {
+            case FEET -> 36;
+            case LEGS -> 37;
+            case CHEST -> 38;
+            case HEAD -> 39;
+            default -> -1;
+        };
     }
 
     private static int armorScore(ItemStack stack, EquipmentSlot slot) {
@@ -267,9 +333,10 @@ final class AIPlayerBotController {
     }
 
     private static void selectBestWeapon(AIPlayerBot bot) {
-        int bestSlot = bot.getInventory().getSelectedSlot();
-        int bestScore = weaponScore(bot.getMainHandStack());
-        for (int i = 0; i < 9; i++) {
+        int selectedSlot = bot.getInventory().getSelectedSlot();
+        int bestSlot = selectedSlot;
+        int bestScore = weaponScore(bot.getInventory().getStack(selectedSlot));
+        for (int i = 0; i < 36; i++) {
             ItemStack stack = bot.getInventory().getStack(i);
             int score = weaponScore(stack);
             if (score > bestScore) {
@@ -277,7 +344,17 @@ final class AIPlayerBotController {
                 bestSlot = i;
             }
         }
-        bot.getInventory().setSelectedSlot(bestSlot);
+        if (bestSlot >= 9) {
+            ItemStack currentHand = bot.getInventory().getStack(selectedSlot);
+            ItemStack bestWeapon = bot.getInventory().removeStack(bestSlot);
+            bot.getInventory().setStack(selectedSlot, bestWeapon);
+            if (!currentHand.isEmpty()) {
+                bot.getInventory().insertStack(currentHand);
+            }
+        } else {
+            bot.getInventory().setSelectedSlot(bestSlot);
+        }
+        bot.getInventory().markDirty();
     }
 
     private static int weaponScore(ItemStack stack) {
