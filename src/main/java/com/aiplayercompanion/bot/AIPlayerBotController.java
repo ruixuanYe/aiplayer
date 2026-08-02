@@ -478,6 +478,7 @@ final class AIPlayerBotController {
                 proxy.discard();
             }
             proxy = new AIPlayerEntity(AIPlayerCompanionMod.AI_PLAYER, owner.getWorld());
+            proxy.setNavigationProxy(true);
             proxy.setOwner(owner);
             proxy.setCompanionState(AIPlayerEntity.CompanionState.WAITING);
             proxy.setInvisible(true);

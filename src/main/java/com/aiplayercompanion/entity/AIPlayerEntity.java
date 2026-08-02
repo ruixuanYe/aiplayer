@@ -13,6 +13,9 @@ import net.minecraft.entity.ai.pathing.EntityNavigation;
 import net.minecraft.entity.ai.pathing.MobNavigation;
 import net.minecraft.entity.attribute.DefaultAttributeContainer;
 import net.minecraft.entity.attribute.EntityAttributes;
+import net.minecraft.entity.data.DataTracker;
+import net.minecraft.entity.data.TrackedData;
+import net.minecraft.entity.data.TrackedDataHandlerRegistry;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.mob.PathAwareEntity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -38,6 +41,10 @@ import java.util.UUID;
 public class AIPlayerEntity extends PathAwareEntity {
     private static final String OWNER_UUID_KEY = "OwnerUuid";
     private static final String STATE_KEY = "CompanionState";
+    private static final TrackedData<Boolean> NAVIGATION_PROXY = DataTracker.registerData(
+            AIPlayerEntity.class,
+            TrackedDataHandlerRegistry.BOOLEAN
+    );
 
     private UUID ownerUuid;
     private CompanionState companionState = CompanionState.FOLLOWING;
@@ -71,6 +78,12 @@ public class AIPlayerEntity extends PathAwareEntity {
     }
 
     @Override
+    protected void initDataTracker(DataTracker.Builder builder) {
+        super.initDataTracker(builder);
+        builder.add(NAVIGATION_PROXY, false);
+    }
+
+    @Override
     protected EntityNavigation createNavigation(World world) {
         MobNavigation navigation = new MobNavigation(this, world);
         navigation.setCanOpenDoors(true);
@@ -85,6 +98,27 @@ public class AIPlayerEntity extends PathAwareEntity {
     @Override
     public boolean canImmediatelyDespawn(double distanceSquared) {
         return false;
+    }
+
+    @Override
+    public boolean shouldSave() {
+        return !isNavigationProxy() && super.shouldSave();
+    }
+
+    public boolean isNavigationProxy() {
+        return getDataTracker().get(NAVIGATION_PROXY);
+    }
+
+    public void setNavigationProxy(boolean navigationProxy) {
+        getDataTracker().set(NAVIGATION_PROXY, navigationProxy);
+        if (navigationProxy) {
+            setCustomName(null);
+            setCustomNameVisible(false);
+            setInvisible(true);
+            setSilent(true);
+            setInvulnerable(true);
+            setPersistent();
+        }
     }
 
     @Override
@@ -124,6 +158,12 @@ public class AIPlayerEntity extends PathAwareEntity {
             return;
         }
 
+        if (isNavigationProxy()) {
+            setCustomNameVisible(false);
+            setInvisible(true);
+            return;
+        }
+
         if (companionState == CompanionState.WAITING) {
             setSneaking(true);
             setSprinting(false);
@@ -140,6 +180,9 @@ public class AIPlayerEntity extends PathAwareEntity {
 
     @Override
     public boolean damage(ServerWorld world, DamageSource source, float amount) {
+        if (isNavigationProxy()) {
+            return false;
+        }
         boolean damaged = super.damage(world, source, amount);
         if (damaged && source.getAttacker() instanceof LivingEntity attacker && !isOwner(attacker)) {
             startFleeing(attacker);

@@ -3,6 +3,7 @@ package com.aiplayercompanion.bot;
 import com.aiplayercompanion.config.ModConfig;
 import com.aiplayercompanion.AIPlayerCompanionMod;
 import com.aiplayercompanion.service.CompanionLog;
+import com.aiplayercompanion.service.AIPlayerManager;
 import com.aiplayercompanion.util.ModelNameUtil;
 import com.mojang.authlib.GameProfile;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -88,6 +89,10 @@ public final class AIPlayerBotManager {
     private static AIPlayerBot spawnFor(ServerPlayerEntity owner, Vec3d position) {
         MinecraftServer server = owner.getServer();
         ServerWorld world = owner.getWorld();
+        AIPlayerManager.findOwnedCompanion(owner).ifPresent(entity -> {
+            entity.discard();
+            CompanionLog.player(owner, "BOT", "removed legacy companion entity before player bot spawn");
+        });
         UUID botUuid = configuredOrNewBotUuid(owner);
         String botName = botPlayerName();
         GameProfile profile = new GameProfile(botUuid, botName);
