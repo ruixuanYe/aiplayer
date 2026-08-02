@@ -360,6 +360,8 @@ public final class AIPlayerBotManager {
 
     private static void reviveVisualState(AIPlayerBot bot) {
         bot.changeGameMode(GameMode.SURVIVAL);
+        bot.noClip = false;
+        bot.setNoGravity(false);
         bot.getAbilities().invulnerable = false;
         bot.getAbilities().creativeMode = false;
         bot.getAbilities().allowFlying = false;

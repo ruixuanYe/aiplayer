@@ -3,6 +3,7 @@ package com.aiplayercompanion.bot;
 import com.mojang.authlib.GameProfile;
 import com.mojang.datafixers.util.Pair;
 import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.s2c.play.EntityEquipmentUpdateS2CPacket;
@@ -40,6 +41,7 @@ public class AIPlayerBot extends ServerPlayerEntity {
     private float lookAroundYaw;
     private long lastAttackTick;
     private long lastJumpAttemptTick;
+    private long controlPausedUntilTick;
 
     public AIPlayerBot(MinecraftServer server, ServerWorld world, GameProfile profile, UUID ownerUuid) {
         super(server, world, profile, SyncedClientOptions.createDefault());
@@ -173,6 +175,14 @@ public class AIPlayerBot extends ServerPlayerEntity {
         lastJumpAttemptTick = tick;
     }
 
+    public boolean isControlPaused(long tick) {
+        return tick < controlPausedUntilTick;
+    }
+
+    public void pauseControlUntil(long tick) {
+        controlPausedUntilTick = Math.max(controlPausedUntilTick, tick);
+    }
+
     @Override
     public ItemStack getEquippedStack(EquipmentSlot slot) {
         return switch (slot) {
@@ -225,6 +235,7 @@ public class AIPlayerBot extends ServerPlayerEntity {
     public boolean damage(ServerWorld world, DamageSource source, float amount) {
         boolean damaged = super.damage(world, source, amount);
         if (damaged) {
+            pauseControlUntil(world.getTime() + 14L);
             ServerPlayerEntity owner = getServer() == null ? null : getServer().getPlayerManager().getPlayer(ownerUuid);
             if (owner != null && world.getTime() - lastDamageFeedbackTick > 40L && getHealth() > 0.0F) {
                 lastDamageFeedbackTick = world.getTime();
@@ -232,6 +243,21 @@ public class AIPlayerBot extends ServerPlayerEntity {
             }
         }
         return damaged;
+    }
+
+    @Override
+    public boolean canHit() {
+        return true;
+    }
+
+    @Override
+    public boolean isPushable() {
+        return true;
+    }
+
+    @Override
+    public boolean collidesWith(Entity other) {
+        return other != this && super.collidesWith(other);
     }
 
     public enum BotState {

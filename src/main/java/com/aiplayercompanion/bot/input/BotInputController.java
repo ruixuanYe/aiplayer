@@ -3,6 +3,7 @@ package com.aiplayercompanion.bot.input;
 import com.aiplayercompanion.bot.AIPlayerBot;
 import net.minecraft.block.BlockState;
 import net.minecraft.entity.Entity;
+import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
@@ -17,6 +18,7 @@ import java.util.UUID;
 public final class BotInputController {
     private static final double REACHED_SQ = 1.0D;
     private static final double STUCK_EPSILON_SQ = 0.0025D;
+    private static final double EXTERNAL_VELOCITY_SQ = 0.045D;
     private static final int STUCK_JUMP_TICKS = 8;
     private final Map<UUID, MoveMemory> memories = new HashMap<>();
 
@@ -26,20 +28,25 @@ public final class BotInputController {
 
     public void tickMoveToward(AIPlayerBot bot, Vec3d target, double stopDistance, boolean sprint) {
         enforceSurvivalBody(bot);
+        long now = bot.getWorld().getTime();
+        if (shouldYieldToVanillaPhysics(bot, now)) {
+            tickVanillaPhysics(bot);
+            return;
+        }
+
         double distanceSq = bot.getPos().squaredDistanceTo(target);
         if (distanceSq <= stopDistance * stopDistance) {
-            stopInputs(bot);
+            stop(bot);
             return;
         }
 
         Vec3d delta = target.subtract(bot.getPos());
         Vec3d horizontal = new Vec3d(delta.x, 0.0D, delta.z);
         if (horizontal.lengthSquared() <= REACHED_SQ) {
-            stopInputs(bot);
+            stop(bot);
             return;
         }
 
-        long now = bot.getWorld().getTime();
         MoveMemory memory = memories.get(bot.getUuid());
         boolean stuck = memory != null
                 && now - memory.tick <= 12L
@@ -66,12 +73,19 @@ public final class BotInputController {
     public void stop(AIPlayerBot bot) {
         memories.remove(bot.getUuid());
         stopInputs(bot);
+        tickVanillaPhysics(bot);
     }
 
     public void stopInputs(AIPlayerBot bot) {
         bot.setJumping(false);
         bot.setSprinting(false);
         bot.setMovementSpeed(0.0F);
+    }
+
+    public void tickVanillaPhysics(AIPlayerBot bot) {
+        enforceSurvivalBody(bot);
+        stopInputs(bot);
+        bot.travel(Vec3d.ZERO);
     }
 
     public void lookAt(AIPlayerBot bot, Entity entity, float fallbackYaw) {
@@ -135,6 +149,23 @@ public final class BotInputController {
                 && frontHead.getCollisionShape(world, frontFeet.up()).isEmpty()
                 && aboveHead.getCollisionShape(world, bot.getBlockPos().up(2)).isEmpty()
                 && world.isSpaceEmpty(bot, landing);
+    }
+
+    private boolean shouldYieldToVanillaPhysics(AIPlayerBot bot, long now) {
+        if (bot.isControlPaused(now) || bot.hurtTime > 0 || bot.timeUntilRegen > 0) {
+            return true;
+        }
+        if (!bot.isOnGround() && !isOnClimbable(bot) && !bot.isTouchingWater()) {
+            return true;
+        }
+        Vec3d velocity = bot.getVelocity();
+        double horizontalVelocitySq = velocity.x * velocity.x + velocity.z * velocity.z;
+        return horizontalVelocitySq > EXTERNAL_VELOCITY_SQ && bot.age > 20;
+    }
+
+    private boolean isOnClimbable(AIPlayerBot bot) {
+        return bot.getWorld().getBlockState(bot.getBlockPos()).isIn(BlockTags.CLIMBABLE)
+                || bot.getWorld().getBlockState(bot.getBlockPos().up()).isIn(BlockTags.CLIMBABLE);
     }
 
     private boolean isOwnerLookingAtBot(ServerPlayerEntity owner, AIPlayerBot bot) {
