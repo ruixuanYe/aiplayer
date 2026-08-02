@@ -4,7 +4,9 @@ import com.aiplayercompanion.config.ModConfig;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.DoorBlock;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.MovementType;
+import net.minecraft.entity.mob.HostileEntity;
 import net.minecraft.network.packet.s2c.play.PositionFlag;
 import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.registry.tag.FluidTags;
@@ -12,6 +14,7 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
@@ -36,6 +39,8 @@ final class AIPlayerBotController {
     private static final double WAYPOINT_REACHED_DISTANCE = 0.55D;
     private static final double STUCK_DISTANCE_SQ = 0.0004D;
     private static final double GRAVITY_STEP = -0.08D;
+    private static final double DEFEND_SCAN_RANGE = 12.0D;
+    private static final double ATTACK_REACH = 2.8D;
 
     private AIPlayerBotController() {
     }
@@ -60,6 +65,11 @@ final class AIPlayerBotController {
         double teleportDistance = ModConfig.get().teleportDistance;
         if (ownerDistanceSq > teleportDistance * teleportDistance) {
             teleportNearOwner(owner, bot, true);
+            return;
+        }
+
+        Optional<HostileEntity> threat = findThreat(owner, bot);
+        if (threat.isPresent() && engageThreat(bot, owner, threat.get(), now)) {
             return;
         }
 
@@ -95,6 +105,75 @@ final class AIPlayerBotController {
         }
 
         followPath(bot, owner, target.get(), ownerDistanceSq, now);
+    }
+
+    private static Optional<HostileEntity> findThreat(ServerPlayerEntity owner, AIPlayerBot bot) {
+        ServerWorld world = owner.getWorld();
+        Box scanBox = owner.getBoundingBox().expand(DEFEND_SCAN_RANGE);
+        List<HostileEntity> hostiles = world.getEntitiesByClass(HostileEntity.class, scanBox, hostile ->
+                hostile.isAlive()
+                        && !hostile.isRemoved()
+                        && hostile.squaredDistanceTo(owner) <= DEFEND_SCAN_RANGE * DEFEND_SCAN_RANGE
+                        && hasLineOrClose(owner, bot, hostile));
+        HostileEntity best = null;
+        double bestScore = Double.MAX_VALUE;
+        for (HostileEntity hostile : hostiles) {
+            double ownerDistance = hostile.squaredDistanceTo(owner);
+            double botDistance = hostile.squaredDistanceTo(bot);
+            LivingEntity target = hostile.getTarget();
+            double score = ownerDistance + botDistance * 0.35D;
+            if (target != null && target.getUuid().equals(owner.getUuid())) {
+                score -= 80.0D;
+            }
+            if (score < bestScore) {
+                best = hostile;
+                bestScore = score;
+            }
+        }
+        return Optional.ofNullable(best);
+    }
+
+    private static boolean hasLineOrClose(ServerPlayerEntity owner, AIPlayerBot bot, HostileEntity hostile) {
+        return hostile.squaredDistanceTo(owner) < 36.0D
+                || hostile.squaredDistanceTo(bot) < 36.0D
+                || hostile.canSee(owner);
+    }
+
+    private static boolean engageThreat(AIPlayerBot bot, ServerPlayerEntity owner, HostileEntity hostile, long now) {
+        bot.setSneaking(false);
+        double distanceSq = bot.squaredDistanceTo(hostile);
+        if (distanceSq <= ATTACK_REACH * ATTACK_REACH) {
+            stopCombatMovement(bot);
+            lookAtEntity(bot, hostile, bot.getYaw());
+            if (bot.canAttackAt(now)) {
+                bot.attack(hostile);
+                bot.swingHand(Hand.MAIN_HAND);
+                bot.markAttacked(now);
+            }
+            return true;
+        }
+
+        Optional<BlockPos> target = findGroundLanding(owner.getWorld(), hostile.getBlockPos(), 4);
+        if (target.isEmpty()) {
+            return false;
+        }
+        if (shouldRepath(bot, target.get(), now)) {
+            List<BlockPos> path = findPath(owner.getWorld(), bot.getBlockPos(), target.get());
+            if (path.isEmpty()) {
+                return false;
+            }
+            bot.setPath(path, target.get(), now);
+        }
+        followPath(bot, owner, target.get(), distanceSq, now);
+        return true;
+    }
+
+    private static void stopCombatMovement(AIPlayerBot bot) {
+        bot.clearPath();
+        bot.setSprinting(false);
+        bot.setVelocity(Vec3d.ZERO);
+        applyGroundPhysics(bot);
+        bot.velocityModified = true;
     }
 
     static boolean teleportNearOwner(ServerPlayerEntity owner, AIPlayerBot bot, boolean feedback) {
@@ -479,7 +558,11 @@ final class AIPlayerBotController {
     }
 
     private static void lookAtOwner(AIPlayerBot bot, ServerPlayerEntity owner, float fallbackYaw) {
-        Vec3d eyeDelta = owner.getEyePos().subtract(bot.getEyePos());
+        lookAtEntity(bot, owner, fallbackYaw);
+    }
+
+    private static void lookAtEntity(AIPlayerBot bot, LivingEntity entity, float fallbackYaw) {
+        Vec3d eyeDelta = entity.getEyePos().subtract(bot.getEyePos());
         double horizontal = Math.sqrt(eyeDelta.x * eyeDelta.x + eyeDelta.z * eyeDelta.z);
         float yaw = horizontal > 0.001D
                 ? (float) (MathHelper.atan2(eyeDelta.z, eyeDelta.x) * 57.2957763671875D) - 90.0F

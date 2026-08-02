@@ -33,6 +33,7 @@ public class AIPlayerBot extends ServerPlayerEntity {
     private boolean lookAtOwnerWhenIdle;
     private long lookAroundUntilTick;
     private float lookAroundYaw;
+    private long lastAttackTick;
 
     public AIPlayerBot(MinecraftServer server, ServerWorld world, GameProfile profile, UUID ownerUuid) {
         super(server, world, profile, SyncedClientOptions.createDefault());
@@ -148,6 +149,14 @@ public class AIPlayerBot extends ServerPlayerEntity {
             }
         }
         clearPath();
+    }
+
+    public boolean canAttackAt(long tick) {
+        return tick - lastAttackTick >= 20L;
+    }
+
+    public void markAttacked(long tick) {
+        lastAttackTick = tick;
     }
 
     @Override
