@@ -39,6 +39,7 @@ public class AIPlayerBot extends ServerPlayerEntity {
     private long lookAroundUntilTick;
     private float lookAroundYaw;
     private long lastAttackTick;
+    private long lastJumpAttemptTick;
 
     public AIPlayerBot(MinecraftServer server, ServerWorld world, GameProfile profile, UUID ownerUuid) {
         super(server, world, profile, SyncedClientOptions.createDefault());
@@ -162,6 +163,14 @@ public class AIPlayerBot extends ServerPlayerEntity {
 
     public void markAttacked(long tick) {
         lastAttackTick = tick;
+    }
+
+    public long getLastJumpAttemptTick() {
+        return lastJumpAttemptTick;
+    }
+
+    public void markJumpAttempt(long tick) {
+        lastJumpAttemptTick = tick;
     }
 
     @Override

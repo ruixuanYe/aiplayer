@@ -1,7 +1,7 @@
 package com.aiplayercompanion.bot;
 
 import com.aiplayercompanion.bot.serverpath.CollisionValidator;
-import com.aiplayercompanion.bot.serverpath.ServerBotNavigator;
+import com.aiplayercompanion.bot.input.BotInputController;
 import com.aiplayercompanion.config.ModConfig;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.ItemEntity;
@@ -17,6 +17,7 @@ import net.minecraft.util.Formatting;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Vec3d;
 
 import java.util.Comparator;
 import java.util.List;
@@ -27,20 +28,20 @@ final class AIPlayerBotController {
     private static final double ATTACK_REACH = 2.8D;
     private static final double PICKUP_SCAN_RANGE = 7.0D;
     private static final double PICKUP_REACH = 1.8D;
-    private static final ServerBotNavigator NAVIGATOR = new ServerBotNavigator();
+    private static final BotInputController INPUT = new BotInputController();
 
     private AIPlayerBotController() {
     }
 
     static void tick(AIPlayerBot bot, ServerPlayerEntity owner) {
         long now = owner.getWorld().getTime();
-        NAVIGATOR.enforceSurvivalBody(bot);
+        INPUT.enforceSurvivalBody(bot);
         handleInventory(bot);
 
         if (bot.getBotState() == AIPlayerBot.BotState.WAITING) {
-            NAVIGATOR.stop(bot);
+            INPUT.stop(bot);
             bot.setSneaking(true);
-            NAVIGATOR.idleLook(bot, owner, now);
+            INPUT.idleLook(bot, owner, now);
             return;
         }
 
@@ -72,20 +73,21 @@ final class AIPlayerBotController {
 
         double stopDistance = Math.max(ModConfig.get().stopFollowDistance, bot.getStopDistance());
         if (ownerDistanceSq <= stopDistance * stopDistance) {
-            NAVIGATOR.stop(bot);
+            INPUT.stop(bot);
             bot.setSneaking(false);
-            NAVIGATOR.idleLook(bot, owner, now);
+            INPUT.idleLook(bot, owner, now);
             return;
         }
 
-        Optional<BlockPos> target = NAVIGATOR.chooseFollowTarget(owner, bot);
+        Optional<Vec3d> target = chooseFollowTarget(owner, bot);
         if (target.isEmpty()) {
-            NAVIGATOR.stop(bot);
-            NAVIGATOR.lookTowardYaw(bot, owner.getYaw());
+            INPUT.stop(bot);
+            INPUT.lookToward(bot, owner.getYaw(), 0.0F);
             return;
         }
 
-        NAVIGATOR.moveTo(bot, owner, target.get(), stopDistance, ownerDistanceSq, now);
+        boolean sprint = ownerDistanceSq > ModConfig.get().sprintFollowDistance * ModConfig.get().sprintFollowDistance;
+        INPUT.tickMoveToward(bot, target.get(), stopDistance, sprint);
     }
 
     private static Optional<LivingEntity> findThreat(ServerPlayerEntity owner, AIPlayerBot bot) {
@@ -133,8 +135,8 @@ final class AIPlayerBotController {
         bot.setSneaking(false);
         double distanceSq = bot.squaredDistanceTo(hostile);
         if (distanceSq <= ATTACK_REACH * ATTACK_REACH) {
-            NAVIGATOR.stop(bot);
-            NAVIGATOR.lookAtEntity(bot, hostile, bot.getYaw());
+            INPUT.stop(bot);
+            INPUT.lookAt(bot, hostile, bot.getYaw());
             if (bot.canAttackAt(now)) {
                 selectBestWeapon(bot);
                 bot.attack(hostile);
@@ -148,7 +150,8 @@ final class AIPlayerBotController {
         if (target.isEmpty()) {
             return false;
         }
-        return NAVIGATOR.moveTo(bot, owner, target.get(), 2.2D, distanceSq, now);
+        INPUT.tickMoveToward(bot, Vec3d.ofBottomCenter(target.get()), 2.2D, distanceSq > 64.0D);
+        return true;
     }
 
     private static void handleInventory(AIPlayerBot bot) {
@@ -199,14 +202,18 @@ final class AIPlayerBotController {
     private static boolean moveToPickup(AIPlayerBot bot, ServerPlayerEntity owner, ItemEntity item, long now) {
         double distanceSq = bot.squaredDistanceTo(item);
         if (distanceSq <= PICKUP_REACH * PICKUP_REACH) {
-            NAVIGATOR.stop(bot);
+            INPUT.stop(bot);
             pickupNearbyItems(bot);
             handleInventory(bot);
             return true;
         }
 
         Optional<BlockPos> target = CollisionValidator.findStandable(owner.getWorld(), item.getBlockPos(), 8, false);
-        return target.isPresent() && NAVIGATOR.moveTo(bot, owner, target.get(), 1.4D, distanceSq, now);
+        if (target.isEmpty()) {
+            return false;
+        }
+        INPUT.tickMoveToward(bot, Vec3d.ofBottomCenter(target.get()), 1.4D, distanceSq > 64.0D);
+        return true;
     }
 
     private static boolean isUsefulPickup(ItemStack stack) {
@@ -332,10 +339,69 @@ final class AIPlayerBotController {
     }
 
     static boolean teleportNearOwner(ServerPlayerEntity owner, AIPlayerBot bot, boolean feedback) {
-        return NAVIGATOR.teleportNearOwner(owner, bot, feedback);
+        Optional<BlockPos> ownerGround = CollisionValidator.findStandable(owner.getWorld(), owner.getBlockPos(), 64, false);
+        Optional<BlockPos> safe = ownerGround.flatMap(pos -> nearestSafeGround(owner, pos, 3, 9));
+        if (safe.isEmpty()) {
+            if (feedback) {
+                owner.sendMessage(Text.literal(bot.getName().getString() + ": 找不到安全传送点，我先在原地等。").formatted(Formatting.YELLOW), false);
+            }
+            return false;
+        }
+        Vec3d position = Vec3d.ofBottomCenter(safe.get());
+        if (bot.getWorld() != owner.getWorld()) {
+            bot.teleport(owner.getWorld(), position.x, position.y, position.z, java.util.Set.of(), owner.getYaw(), 0.0F, true);
+        } else {
+            bot.requestTeleport(position.x, position.y, position.z);
+        }
+        INPUT.stop(bot);
+        INPUT.enforceSurvivalBody(bot);
+        if (feedback) {
+            owner.sendMessage(Text.literal(bot.getName().getString() + ": 距离太远了，我回到你附近的安全位置。").formatted(Formatting.GREEN), false);
+        }
+        return true;
     }
 
     static void discardNavigationProxy(AIPlayerBot bot) {
-        NAVIGATOR.stop(bot);
+        INPUT.stop(bot);
+    }
+
+    private static Optional<Vec3d> chooseFollowTarget(ServerPlayerEntity owner, AIPlayerBot bot) {
+        Optional<BlockPos> ownerGround = CollisionValidator.findStandable(owner.getWorld(), owner.getBlockPos(), 48, false);
+        if (ownerGround.isEmpty()) {
+            return Optional.empty();
+        }
+        double yaw = Math.toRadians(owner.getYaw());
+        Vec3d forward = new Vec3d(-Math.sin(yaw), 0.0D, Math.cos(yaw));
+        Vec3d right = new Vec3d(Math.cos(yaw), 0.0D, Math.sin(yaw));
+        double sideSign = (bot.getUuid().getLeastSignificantBits() & 1L) == 0L ? 1.0D : -1.0D;
+        Vec3d preferred = Vec3d.ofBottomCenter(ownerGround.get())
+                .subtract(forward.multiply(bot.getFollowDistance()))
+                .add(right.multiply(bot.getSideDistance() * sideSign));
+        Optional<BlockPos> safe = CollisionValidator.findStandable(owner.getWorld(), BlockPos.ofFloored(preferred), 8, false);
+        return safe.map(Vec3d::ofBottomCenter);
+    }
+
+    private static Optional<BlockPos> nearestSafeGround(ServerPlayerEntity owner, BlockPos center, int minRadius, int radius) {
+        BlockPos best = null;
+        double bestScore = Double.MAX_VALUE;
+        for (int r = minRadius; r <= radius; r++) {
+            for (int x = -r; x <= r; x++) {
+                for (int z = -r; z <= r; z++) {
+                    if (Math.abs(x) != r && Math.abs(z) != r) {
+                        continue;
+                    }
+                    Optional<BlockPos> safe = CollisionValidator.findStandable(owner.getWorld(), center.add(x, 0, z), 32, false);
+                    if (safe.isEmpty()) {
+                        continue;
+                    }
+                    double score = safe.get().getSquaredDistance(center);
+                    if (score < bestScore) {
+                        best = safe.get();
+                        bestScore = score;
+                    }
+                }
+            }
+        }
+        return Optional.ofNullable(best);
     }
 }
