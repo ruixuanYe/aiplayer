@@ -3,7 +3,7 @@
   "id": "aiplayer_companion",
   "version": "${version}",
   "name": "AIPlayer Companion",
-  "description": "A small Fabric AI companion entity that follows its owner and chats through LM Studio.",
+  "description": "A clean Carpet-style server fake player foundation for AIPlayer Companion.",
   "authors": [
     "Ye Ruixuan"
   ],
@@ -14,12 +14,6 @@
   "entrypoints": {
     "main": [
       "com.aiplayercompanion.AIPlayerCompanionMod"
-    ],
-    "client": [
-      "com.aiplayercompanion.AIPlayerCompanionClient"
-    ],
-    "modmenu": [
-      "com.aiplayercompanion.client.AIPlayerModMenuIntegration"
     ]
   },
   "depends": {

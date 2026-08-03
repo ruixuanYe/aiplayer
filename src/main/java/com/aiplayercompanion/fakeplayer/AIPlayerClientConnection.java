@@ -1,5 +1,6 @@
-package com.aiplayercompanion.bot;
+package com.aiplayercompanion.fakeplayer;
 
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.network.ClientConnection;
@@ -10,12 +11,12 @@ import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 
-public class DummyClientConnection extends ClientConnection {
+public final class AIPlayerClientConnection extends ClientConnection {
     private static final SocketAddress ADDRESS = new InetSocketAddress("127.0.0.1", 0);
 
-    public DummyClientConnection() {
+    public AIPlayerClientConnection() {
         super(NetworkSide.SERVERBOUND);
-        installDummyChannel();
+        installBackingChannel();
     }
 
     @Override
@@ -47,13 +48,13 @@ public class DummyClientConnection extends ClientConnection {
 
     @Override
     public String getAddressAsString(boolean useHostname) {
-        return "aiplayer-local";
+        return "aiplayer-fake";
     }
 
-    private void installDummyChannel() {
+    private void installBackingChannel() {
         EmbeddedChannel channel = new EmbeddedChannel();
         for (Field field : ClientConnection.class.getDeclaredFields()) {
-            if (io.netty.channel.Channel.class.isAssignableFrom(field.getType())) {
+            if (Channel.class.isAssignableFrom(field.getType())) {
                 setField(field, channel);
             } else if (SocketAddress.class.isAssignableFrom(field.getType())) {
                 setField(field, ADDRESS);
