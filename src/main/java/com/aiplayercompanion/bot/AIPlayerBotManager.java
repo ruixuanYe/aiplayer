@@ -72,6 +72,8 @@ public final class AIPlayerBotManager {
     }
 
     public static AIPlayerBot spawnFor(ServerPlayerEntity owner) {
+        PENDING_RESPAWNS.remove(owner.getUuid());
+        removeOwnedBots(owner);
         return spawnFor(owner, owner.getPos().add(1.5D, 0.0D, 1.5D));
     }
 
@@ -109,6 +111,17 @@ public final class AIPlayerBotManager {
         bot.refreshPositionAndAngles(position.x, position.y, position.z, owner.getYaw(), 0.0F);
         CompanionLog.player(owner, "BOT", "spawned player bot " + botName);
         return bot;
+    }
+
+    private static void removeOwnedBots(ServerPlayerEntity owner) {
+        MinecraftServer server = owner.getServer();
+        for (ServerPlayerEntity player : new ArrayList<>(server.getPlayerManager().getPlayerList())) {
+            if (player instanceof AIPlayerBot bot && bot.getOwnerUuid().equals(owner.getUuid())) {
+                AIPlayerBotController.discardNavigationProxy(bot);
+                server.getPlayerManager().remove(bot);
+                bot.remove(Entity.RemovalReason.DISCARDED);
+            }
+        }
     }
 
     public static void remove(ServerPlayerEntity owner, AIPlayerBot bot) {
@@ -151,12 +164,12 @@ public final class AIPlayerBotManager {
     }
 
     public static boolean teleportNearOwner(ServerPlayerEntity owner, AIPlayerBot bot, boolean feedback) {
-        boolean useGroundedController = System.nanoTime() >= 0L;
-        if (useGroundedController) {
-            boolean teleported = AIPlayerBotController.teleportNearOwner(owner, bot, feedback);
-            CompanionLog.player(owner, "BOT", teleported ? "teleported bot near owner" : "teleport failed: no safe position");
-            return teleported;
-        }
+        boolean teleported = AIPlayerBotController.teleportNearOwner(owner, bot, feedback);
+        CompanionLog.player(owner, "BOT", teleported ? "teleported bot near owner" : "teleport failed: no safe position");
+        return teleported;
+    }
+
+    private static boolean unusedLegacyTeleportNearOwner(ServerPlayerEntity owner, AIPlayerBot bot, boolean feedback) {
         Optional<Vec3d> safe = findSafePositionNearOwner(owner);
         if (safe.isEmpty()) {
             owner.sendMessage(Text.literal(bot.getName().getString() + ": no safe teleport position near you.").formatted(Formatting.YELLOW), false);

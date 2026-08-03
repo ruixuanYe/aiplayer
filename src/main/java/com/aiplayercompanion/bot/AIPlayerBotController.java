@@ -1,6 +1,7 @@
 package com.aiplayercompanion.bot;
 
 import com.aiplayercompanion.bot.serverpath.CollisionValidator;
+import com.aiplayercompanion.bot.serverpath.ServerPathfinder;
 import com.aiplayercompanion.bot.input.BotInputController;
 import com.aiplayercompanion.config.ModConfig;
 import net.minecraft.entity.EquipmentSlot;
@@ -87,7 +88,7 @@ final class AIPlayerBotController {
         }
 
         boolean sprint = ownerDistanceSq > ModConfig.get().sprintFollowDistance * ModConfig.get().sprintFollowDistance;
-        INPUT.tickMoveToward(bot, target.get(), stopDistance, sprint);
+        followPathTo(bot, target.get(), stopDistance, sprint, now);
     }
 
     private static Optional<LivingEntity> findThreat(ServerPlayerEntity owner, AIPlayerBot bot) {
@@ -150,7 +151,7 @@ final class AIPlayerBotController {
         if (target.isEmpty()) {
             return false;
         }
-        INPUT.tickMoveToward(bot, Vec3d.ofBottomCenter(target.get()), 2.2D, distanceSq > 64.0D);
+        followPathTo(bot, Vec3d.ofBottomCenter(target.get()), 2.2D, distanceSq > 64.0D, now);
         return true;
     }
 
@@ -212,7 +213,7 @@ final class AIPlayerBotController {
         if (target.isEmpty()) {
             return false;
         }
-        INPUT.tickMoveToward(bot, Vec3d.ofBottomCenter(target.get()), 1.4D, distanceSq > 64.0D);
+        followPathTo(bot, Vec3d.ofBottomCenter(target.get()), 1.4D, distanceSq > 64.0D, now);
         return true;
     }
 
@@ -363,6 +364,49 @@ final class AIPlayerBotController {
 
     static void discardNavigationProxy(AIPlayerBot bot) {
         INPUT.stop(bot);
+        bot.clearPath();
+    }
+
+    private static void followPathTo(AIPlayerBot bot, Vec3d target, double stopDistance, boolean sprint, long now) {
+        if (bot.getPos().squaredDistanceTo(target) <= stopDistance * stopDistance) {
+            bot.clearPath();
+            INPUT.stop(bot);
+            return;
+        }
+
+        BlockPos targetBlock = BlockPos.ofFloored(target);
+        boolean needsPath = bot.getPath().isEmpty()
+                || bot.getLastPathTarget() == null
+                || bot.getLastPathTarget().getSquaredDistance(targetBlock) > 9.0D
+                || now - bot.getLastPathComputeTick() > 30L
+                || bot.getPathIndex() >= bot.getPath().size();
+
+        if (needsPath) {
+            ServerPathfinder.findPath(bot.getWorld(), bot.getBlockPos(), targetBlock, 96)
+                    .ifPresentOrElse(
+                            path -> bot.setPath(path, targetBlock, now),
+                            bot::clearPath
+                    );
+        }
+
+        if (bot.getPath().isEmpty() || bot.getPathIndex() >= bot.getPath().size()) {
+            INPUT.stop(bot);
+            return;
+        }
+
+        BlockPos waypoint = bot.getPath().get(bot.getPathIndex());
+        Vec3d waypointPos = Vec3d.ofBottomCenter(waypoint);
+        if (bot.getPos().squaredDistanceTo(waypointPos) < 0.85D) {
+            bot.advancePath();
+            if (bot.getPathIndex() >= bot.getPath().size()) {
+                INPUT.stop(bot);
+                return;
+            }
+            waypoint = bot.getPath().get(bot.getPathIndex());
+            waypointPos = Vec3d.ofBottomCenter(waypoint);
+        }
+
+        INPUT.tickMoveToward(bot, waypointPos, 0.45D, sprint);
     }
 
     private static Optional<Vec3d> chooseFollowTarget(ServerPlayerEntity owner, AIPlayerBot bot) {

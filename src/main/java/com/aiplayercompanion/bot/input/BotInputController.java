@@ -2,10 +2,14 @@ package com.aiplayercompanion.bot.input;
 
 import com.aiplayercompanion.bot.AIPlayerBot;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.DoorBlock;
 import net.minecraft.entity.Entity;
 import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
+import net.minecraft.util.PlayerInput;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
@@ -29,7 +33,7 @@ public final class BotInputController {
         enforceSurvivalBody(bot);
         long now = bot.getWorld().getTime();
         if (shouldYieldToVanillaPhysics(bot, now)) {
-            tickVanillaPhysics(bot);
+            stopInputs(bot);
             return;
         }
 
@@ -56,39 +60,37 @@ public final class BotInputController {
         bot.setSneaking(false);
         bot.setSprinting(sprint && bot.isOnGround());
         bot.setMovementSpeed(sprint ? 0.135F : 0.1F);
-        bot.sidewaysSpeed = 0.0F;
-        bot.forwardSpeed = 1.0F;
+        bot.setPlayerInput(new PlayerInput(true, false, false, false, false, false, sprint && bot.isOnGround()));
+        openDoorAhead(bot, horizontal);
 
         boolean shouldJump = shouldJump(bot, horizontal) || (stuck && now - bot.getLastJumpAttemptTick() > STUCK_JUMP_TICKS);
         bot.setJumping(shouldJump);
+        if (shouldJump) {
+            bot.setPlayerInput(new PlayerInput(true, false, false, false, true, false, sprint && bot.isOnGround()));
+        }
         if (shouldJump && bot.isOnGround()) {
             bot.jump();
             bot.markJumpAttempt(now);
         }
 
-        // Consume vanilla movement input immediately because fake players do not have a real client packet loop.
-        bot.tickMovement();
         memories.put(bot.getUuid(), new MoveMemory(bot.getPos(), now));
     }
 
     public void stop(AIPlayerBot bot) {
         memories.remove(bot.getUuid());
         stopInputs(bot);
-        tickVanillaPhysics(bot);
     }
 
     public void stopInputs(AIPlayerBot bot) {
         bot.setJumping(false);
         bot.setSprinting(false);
-        bot.sidewaysSpeed = 0.0F;
-        bot.forwardSpeed = 0.0F;
+        bot.setPlayerInput(PlayerInput.DEFAULT);
         bot.setMovementSpeed(0.0F);
     }
 
     public void tickVanillaPhysics(AIPlayerBot bot) {
         enforceSurvivalBody(bot);
         stopInputs(bot);
-        bot.tickMovement();
     }
 
     public void lookAt(AIPlayerBot bot, Entity entity, float fallbackYaw) {
@@ -152,6 +154,22 @@ public final class BotInputController {
                 && frontHead.getCollisionShape(world, frontFeet.up()).isEmpty()
                 && aboveHead.getCollisionShape(world, bot.getBlockPos().up(2)).isEmpty()
                 && world.isSpaceEmpty(bot, landing);
+    }
+
+    private void openDoorAhead(AIPlayerBot bot, Vec3d horizontal) {
+        if (horizontal.lengthSquared() < 0.001D) {
+            return;
+        }
+        Vec3d dir = horizontal.normalize();
+        ServerWorld world = bot.getWorld();
+        BlockPos base = BlockPos.ofFloored(bot.getX() + dir.x * 0.75D, bot.getY(), bot.getZ() + dir.z * 0.75D);
+        for (BlockPos pos : new BlockPos[]{base, base.up()}) {
+            BlockState state = world.getBlockState(pos);
+            if (state.getBlock() instanceof DoorBlock && state.contains(DoorBlock.OPEN) && !state.get(DoorBlock.OPEN)) {
+                world.setBlockState(pos, state.with(DoorBlock.OPEN, true), 10);
+                world.playSound(null, pos, SoundEvents.BLOCK_WOODEN_DOOR_OPEN, SoundCategory.BLOCKS, 0.8F, 1.0F);
+            }
+        }
     }
 
     private boolean shouldYieldToVanillaPhysics(AIPlayerBot bot, long now) {
