@@ -14,19 +14,26 @@ import net.minecraft.state.property.Properties;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.World;
 
 import java.util.Optional;
 import java.util.UUID;
 
 public final class CarpetFollowController {
     private static final int TICK_INTERVAL = 5;
+    private static final int MAX_JUMP_ATTEMPTS = 6;
+
     private static long lastTick;
     private static boolean moving;
     private static boolean sprinting;
     private static int stuckTicks;
+    private static int jumpAttempts;
     private static int useCooldown;
+    private static int teleportCooldown;
     private static Vec3d lastPos = Vec3d.ZERO;
 
     private CarpetFollowController() {
@@ -39,13 +46,13 @@ public final class CarpetFollowController {
     public static int follow(ServerCommandSource source, ServerPlayerEntity owner) {
         AIPlayerCleanConfig config = AIPlayerCleanConfig.get();
         if (!isOwner(owner, config)) {
-            owner.sendMessage(Text.literal("这个 AIPlayer 不属于你，不能控制。").formatted(Formatting.RED), false);
+            owner.sendMessage(Text.literal("AIPlayer: only the owner can control this bot.").formatted(Formatting.RED), false);
             return 0;
         }
         config.behaviorMode = "FOLLOWING";
         AIPlayerCleanConfig.save();
         resetMotionState();
-        owner.sendMessage(Text.literal("AIPlayer 开始跟随你。").formatted(Formatting.GREEN), false);
+        owner.sendMessage(Text.literal("AIPlayer is following you.").formatted(Formatting.GREEN), false);
         tickNow(source.getServer());
         return 1;
     }
@@ -53,26 +60,26 @@ public final class CarpetFollowController {
     public static int stop(ServerCommandSource source, ServerPlayerEntity owner) {
         AIPlayerCleanConfig config = AIPlayerCleanConfig.get();
         if (!isOwner(owner, config)) {
-            owner.sendMessage(Text.literal("这个 AIPlayer 不属于你，不能控制。").formatted(Formatting.RED), false);
+            owner.sendMessage(Text.literal("AIPlayer: only the owner can control this bot.").formatted(Formatting.RED), false);
             return 0;
         }
         config.behaviorMode = "WAITING";
         AIPlayerCleanConfig.save();
         findBot(source.getServer()).ifPresent(bot -> stopAll(source, bot));
-        owner.sendMessage(Text.literal("AIPlayer 正在原地等待。").formatted(Formatting.YELLOW), false);
+        owner.sendMessage(Text.literal("AIPlayer is waiting here.").formatted(Formatting.YELLOW), false);
         return 1;
     }
 
     public static int come(ServerCommandSource source, ServerPlayerEntity owner) {
         AIPlayerCleanConfig config = AIPlayerCleanConfig.get();
         if (!isOwner(owner, config)) {
-            owner.sendMessage(Text.literal("这个 AIPlayer 不属于你，不能控制。").formatted(Formatting.RED), false);
+            owner.sendMessage(Text.literal("AIPlayer: only the owner can control this bot.").formatted(Formatting.RED), false);
             return 0;
         }
         config.behaviorMode = "FOLLOWING";
         AIPlayerCleanConfig.save();
         resetMotionState();
-        owner.sendMessage(Text.literal("AIPlayer 正在过来。").formatted(Formatting.GREEN), false);
+        owner.sendMessage(Text.literal("AIPlayer is coming.").formatted(Formatting.GREEN), false);
         tickNow(source.getServer());
         return 1;
     }
@@ -91,6 +98,9 @@ public final class CarpetFollowController {
         lastTick = server.getTicks();
         if (useCooldown > 0) {
             useCooldown--;
+        }
+        if (teleportCooldown > 0) {
+            teleportCooldown--;
         }
         tickNow(server);
     }
@@ -119,7 +129,11 @@ public final class CarpetFollowController {
         double distance = bot.distanceTo(owner);
         if (distance > config.teleportDistance) {
             stopAll(source, bot);
-            owner.sendMessage(Text.literal("AIPlayer 距离过远，等待后续安全传送模块处理。").formatted(Formatting.YELLOW), false);
+            tryTeleportNearOwner(source, bot, owner, "too far");
+            return;
+        }
+
+        if (tryOpenDoor(source, bot, owner)) {
             return;
         }
 
@@ -130,10 +144,8 @@ public final class CarpetFollowController {
         }
 
         if (distance >= config.startFollowDistance) {
-            boolean shouldSprint = distance >= config.sprintDistance;
-            setSprint(source, bot, shouldSprint);
-            openDoorIfNeeded(source, bot);
-            jumpIfStuckOrBlocked(source, bot);
+            setSprint(source, bot, distance >= config.sprintDistance);
+            jumpIfStuckOrBlocked(source, bot, owner);
             if (!moving) {
                 command(source, bot, "move forward");
                 moving = true;
@@ -170,7 +182,7 @@ public final class CarpetFollowController {
         sprinting = shouldSprint;
     }
 
-    private static void jumpIfStuckOrBlocked(ServerCommandSource source, ServerPlayerEntity bot) {
+    private static void jumpIfStuckOrBlocked(ServerCommandSource source, ServerPlayerEntity bot, ServerPlayerEntity owner) {
         Vec3d current = bot.getPos();
         double moved = current.squaredDistanceTo(lastPos);
         lastPos = current;
@@ -181,27 +193,74 @@ public final class CarpetFollowController {
         }
 
         if (bot.horizontalCollision || stuckTicks >= 3) {
+            jumpAttempts++;
+            if (jumpAttempts >= MAX_JUMP_ATTEMPTS) {
+                stopAll(source, bot);
+                if (tryTeleportNearOwner(source, bot, owner, "stuck")) {
+                    jumpAttempts = 0;
+                }
+                return;
+            }
             command(source, bot, "jump once");
             stuckTicks = 0;
+        } else if (stuckTicks == 0) {
+            jumpAttempts = 0;
         }
     }
 
-    private static void openDoorIfNeeded(ServerCommandSource source, ServerPlayerEntity bot) {
+    private static boolean tryOpenDoor(ServerCommandSource source, ServerPlayerEntity bot, ServerPlayerEntity owner) {
         if (useCooldown > 0) {
-            return;
+            return false;
         }
-        BlockPos ahead = bot.getBlockPos().offset(bot.getHorizontalFacing());
-        if (isDoorLike(bot.getWorld().getBlockState(ahead)) || isDoorLike(bot.getWorld().getBlockState(ahead.up()))) {
-            command(source, bot, "use once");
-            useCooldown = 8;
+        BlockPos door = findDoorToOpen(bot, owner);
+        if (door == null) {
+            return false;
         }
+        face(bot, Vec3d.ofCenter(door));
+        command(source, bot, "use once");
+        useCooldown = 6;
+        return true;
     }
 
-    private static boolean isDoorLike(BlockState state) {
+    private static BlockPos findDoorToOpen(ServerPlayerEntity bot, ServerPlayerEntity owner) {
+        Vec3d delta = owner.getPos().subtract(bot.getPos());
+        Direction pathDirection = horizontalDirection(delta);
+        Direction facing = bot.getHorizontalFacing();
+        Direction[] directions = new Direction[]{pathDirection, facing, facing.rotateYClockwise(), facing.rotateYCounterclockwise()};
+        BlockPos base = bot.getBlockPos();
+        for (Direction direction : directions) {
+            for (int step = 1; step <= 2; step++) {
+                BlockPos door = closedDoorAt(bot.getWorld(), base.offset(direction, step));
+                if (door != null) {
+                    return door;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static BlockPos closedDoorAt(World world, BlockPos pos) {
+        if (isClosedDoorLike(world.getBlockState(pos))) {
+            return pos;
+        }
+        if (isClosedDoorLike(world.getBlockState(pos.up()))) {
+            return pos.up();
+        }
+        return null;
+    }
+
+    private static boolean isClosedDoorLike(BlockState state) {
         Block block = state.getBlock();
         return (block instanceof DoorBlock || block instanceof TrapdoorBlock)
                 && state.contains(Properties.OPEN)
                 && !state.get(Properties.OPEN);
+    }
+
+    private static Direction horizontalDirection(Vec3d delta) {
+        if (Math.abs(delta.x) > Math.abs(delta.z)) {
+            return delta.x >= 0.0 ? Direction.EAST : Direction.WEST;
+        }
+        return delta.z >= 0.0 ? Direction.SOUTH : Direction.NORTH;
     }
 
     private static void face(ServerPlayerEntity bot, Vec3d target) {
@@ -215,6 +274,60 @@ public final class CarpetFollowController {
         bot.setBodyYaw(yaw);
     }
 
+    private static boolean tryTeleportNearOwner(ServerCommandSource source, ServerPlayerEntity bot, ServerPlayerEntity owner, String reason) {
+        if (teleportCooldown > 0) {
+            return false;
+        }
+        BlockPos safe = findSafeTeleportPos(bot, owner);
+        if (safe == null) {
+            owner.sendMessage(Text.literal("AIPlayer " + reason + ", no safe teleport position nearby.").formatted(Formatting.YELLOW), false);
+            teleportCooldown = 40;
+            return false;
+        }
+        command(source, bot, "stop");
+        command(source, bot, "unsprint");
+        bot.requestTeleportAndDismount(safe.getX() + 0.5, safe.getY(), safe.getZ() + 0.5);
+        owner.sendMessage(Text.literal("AIPlayer " + reason + ", teleported nearby.").formatted(Formatting.GREEN), false);
+        resetMotionState();
+        teleportCooldown = 60;
+        return true;
+    }
+
+    private static BlockPos findSafeTeleportPos(ServerPlayerEntity bot, ServerPlayerEntity owner) {
+        BlockPos origin = owner.getBlockPos();
+        for (int radius = 3; radius <= 6; radius++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (Math.abs(dx) != radius && Math.abs(dz) != radius) {
+                        continue;
+                    }
+                    for (int dy = 2; dy >= -3; dy--) {
+                        BlockPos pos = origin.add(dx, dy, dz);
+                        if (isSafeStandPos(bot, pos)) {
+                            return pos;
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isSafeStandPos(ServerPlayerEntity bot, BlockPos pos) {
+        World world = bot.getWorld();
+        BlockState floor = world.getBlockState(pos.down());
+        BlockState feet = world.getBlockState(pos);
+        BlockState head = world.getBlockState(pos.up());
+        if (!floor.isSideSolidFullSquare(world, pos.down(), Direction.UP)) {
+            return false;
+        }
+        if (!feet.getFluidState().isEmpty() || !head.getFluidState().isEmpty()) {
+            return false;
+        }
+        Box box = new Box(pos.getX() + 0.2, pos.getY(), pos.getZ() + 0.2, pos.getX() + 0.8, pos.getY() + 1.8, pos.getZ() + 0.8);
+        return world.isSpaceEmpty(bot, box);
+    }
+
     private static void command(ServerCommandSource source, ServerPlayerEntity bot, String action) {
         CarpetAIPlayerManager.executeCarpetCommand(source, "player " + bot.getName().getString() + " " + action);
     }
@@ -223,7 +336,9 @@ public final class CarpetFollowController {
         moving = false;
         sprinting = false;
         stuckTicks = 0;
+        jumpAttempts = 0;
         lastPos = Vec3d.ZERO;
         useCooldown = 0;
+        teleportCooldown = 0;
     }
 }
