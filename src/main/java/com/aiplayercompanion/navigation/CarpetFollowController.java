@@ -29,7 +29,8 @@ import java.util.UUID;
 public final class CarpetFollowController {
     private static final int TICK_INTERVAL = 5;
     private static final int MAX_JUMP_ATTEMPTS = 6;
-    private static final int PATH_REPLAN_TICKS = 20;
+    private static final int PATH_REPLAN_TICKS = 80;
+    private static final double OWNER_REPLAN_DISTANCE_SQ = 64.0;
     private static final int TELEPORT_AFTER_PATH_FAILURES = 24;
 
     private static long lastTick;
@@ -174,10 +175,11 @@ public final class CarpetFollowController {
 
     private static void followWithPath(ServerCommandSource source, ServerPlayerEntity bot, ServerPlayerEntity owner, AIPlayerCleanConfig config) {
         long now = bot.getServer().getTicks();
-        boolean ownerMoved = lastOwnerTarget == BlockPos.ORIGIN || owner.getBlockPos().getSquaredDistance(lastOwnerTarget) > 6.0;
-        boolean needsPath = !CarpetPathExecutor.hasPath()
-                || ownerMoved
-                || now - lastPathPlanTick >= PATH_REPLAN_TICKS;
+        boolean hasPath = CarpetPathExecutor.hasPath();
+        boolean ownerMovedFar = lastOwnerTarget == BlockPos.ORIGIN || owner.getBlockPos().getSquaredDistance(lastOwnerTarget) > OWNER_REPLAN_DISTANCE_SQ;
+        boolean botIsLagging = bot.distanceTo(owner) > config.startFollowDistance + 8.0;
+        boolean canRefreshPath = now - lastPathPlanTick >= PATH_REPLAN_TICKS;
+        boolean needsPath = !hasPath || (ownerMovedFar && botIsLagging && canRefreshPath);
 
         if (needsPath) {
             PathResult result = AIPlayerPathfinder.findPath(bot, owner, config);
