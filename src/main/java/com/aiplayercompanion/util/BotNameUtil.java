@@ -12,28 +12,21 @@ public final class BotNameUtil {
         String lower = modelName == null ? "" : modelName.toLowerCase();
         String detected;
         if (lower.contains("deepseek")) {
-            detected = "AIDeepSeekR1";
+            detected = "deepseekR1";
         } else if (lower.contains("claude")) {
-            detected = "AIClaude";
+            detected = "claude";
         } else if (lower.contains("gemini")) {
-            detected = "AIGemini";
+            detected = "gemini";
         } else if (lower.contains("qwen")) {
-            detected = "AIQwen";
+            detected = "qwen";
         } else {
             String[] parts = lower.split("[/:_-]+");
-            detected = parts.length == 0 || parts[parts.length - 1].isBlank() ? "AIPlayerBot" : "AI" + capitalize(parts[parts.length - 1]);
+            detected = parts.length == 0 || parts[parts.length - 1].isBlank() ? "aiplayer" : parts[parts.length - 1];
         }
         detected = SAFE_NAME_CHARS.matcher(detected).replaceAll("");
         if (detected.isBlank()) {
-            detected = "AIPlayerBot";
+            detected = "aiplayer";
         }
         return detected.length() > 16 ? detected.substring(0, 16) : detected;
-    }
-
-    private static String capitalize(String value) {
-        if (value == null || value.isBlank()) {
-            return "";
-        }
-        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
     }
 }
