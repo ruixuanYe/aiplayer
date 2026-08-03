@@ -12,18 +12,21 @@ import java.nio.file.Path;
 
 public final class AIPlayerCleanConfig {
     public static final String DEFAULT_BOT_NAME = "AIPlayerBot";
+    public static final String DEFAULT_API_URL = "http://127.0.0.1:1234/v1/chat/completions";
+    public static final String DEFAULT_SYSTEM_PROMPT = "\u4f60\u662f\u4e00\u4e2a Minecraft AI \u966a\u4f34\u73a9\u5bb6\u3002\u4f60\u7684\u56de\u590d\u5e94\u7b80\u77ed\u3001\u81ea\u7136\u3001\u53cb\u597d\uff0c\u4e0d\u8d85\u8fc7\u4e24\u53e5\u8bdd\u3002\u4f60\u4e0d\u80fd\u58f0\u79f0\u5b8c\u6210\u4e86\u5b9e\u9645\u672a\u5b8c\u6210\u7684\u6e38\u620f\u64cd\u4f5c\u3002";
+
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve("aiplayer_companion_clean.json");
 
     public String botName = DEFAULT_BOT_NAME;
     public String botUuid = "";
     public String ownerUuid = "";
-    public String apiUrl = "http://127.0.0.1:1234/v1/chat/completions";
+    public String apiUrl = DEFAULT_API_URL;
     public String modelName = "local-model";
     public String apiKey = "";
     public int timeoutSeconds = 15;
     public boolean aiChatEnabled = true;
-    public String systemPrompt = "你是一个 Minecraft AI 陪伴玩家。你的回复应简短、自然、友好，不超过两句话。你不能声称完成了实际未完成的游戏操作。";
+    public String systemPrompt = DEFAULT_SYSTEM_PROMPT;
 
     private static AIPlayerCleanConfig INSTANCE;
 
@@ -80,7 +83,7 @@ public final class AIPlayerCleanConfig {
             botName = DEFAULT_BOT_NAME;
         }
         if (apiUrl == null || apiUrl.isBlank()) {
-            apiUrl = "http://127.0.0.1:1234/v1/chat/completions";
+            apiUrl = DEFAULT_API_URL;
         }
         if (modelName == null || modelName.isBlank()) {
             modelName = "local-model";
@@ -91,8 +94,6 @@ public final class AIPlayerCleanConfig {
         if (timeoutSeconds < 1 || timeoutSeconds > 120) {
             timeoutSeconds = 15;
         }
-        if (systemPrompt == null || systemPrompt.isBlank()) {
-            systemPrompt = "你是一个 Minecraft AI 陪伴玩家。你的回复应简短、自然、友好，不超过两句话。你不能声称完成了实际未完成的游戏操作。";
-        }
+        systemPrompt = DEFAULT_SYSTEM_PROMPT;
     }
 }

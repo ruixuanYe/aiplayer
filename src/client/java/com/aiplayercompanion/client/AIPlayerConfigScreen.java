@@ -16,7 +16,7 @@ import java.util.List;
 public final class AIPlayerConfigScreen extends Screen {
     private static final int FIELD_WIDTH = 360;
     private static final int FIELD_HEIGHT = 20;
-    private static final int ROW = 46;
+    private static final int ROW = 68;
 
     private final Screen parent;
     private final List<FieldRow> fields = new ArrayList<>();
@@ -37,21 +37,19 @@ public final class AIPlayerConfigScreen extends Screen {
 
         int centerX = width / 2;
         int y = 74 - scroll;
-        addField("\u0041\u0050\u0049 \u5730\u5740", config.apiUrl, 500, y, text -> config.apiUrl = text);
+        addField("\u0041\u0050\u0049 \u5730\u5740", "\u4f8b\uff1ahttp://127.0.0.1:1234/v1/chat/completions", config.apiUrl, 500, y, text -> config.apiUrl = text);
         y += ROW;
-        addField("\u6a21\u578b\u540d\u79f0", config.modelName, 200, y, text -> config.modelName = text);
+        addField("\u6a21\u578b\u540d\u79f0", "\u5728 LM Studio \u7684 Local Server / Models \u91cc\u67e5\u770b\uff0c\u9700\u8981\u548c\u670d\u52a1\u7aef\u6a21\u578b ID \u4e00\u81f4", config.modelName, 200, y, text -> config.modelName = text);
         y += ROW;
-        addField("API Key / Token", config.apiKey, 500, y, text -> config.apiKey = text);
+        addField("API Key / Token", "LM Studio \u672c\u5730\u670d\u52a1\u901a\u5e38\u7559\u7a7a\uff1b\u63a5 OpenAI \u6216\u5176\u4ed6 API \u65f6\u518d\u586b", config.apiKey, 500, y, text -> config.apiKey = text);
         y += ROW;
-        addField("\u8d85\u65f6\u79d2\u6570", String.valueOf(config.timeoutSeconds), 3, y, text -> {
+        addField("\u8d85\u65f6\u79d2\u6570", "\u8bf7\u6c42\u6700\u591a\u7b49\u5f85\u591a\u5c11\u79d2\uff0c\u5efa\u8bae 15", String.valueOf(config.timeoutSeconds), 3, y, text -> {
             try {
                 config.timeoutSeconds = Integer.parseInt(text.trim());
             } catch (NumberFormatException ignored) {
                 config.timeoutSeconds = 15;
             }
         });
-        y += ROW;
-        addField("\u0041\u0049 \u7cfb\u7edf\u63d0\u793a\u8bcd", config.systemPrompt, 1000, y, text -> config.systemPrompt = text);
         y += ROW;
 
         CheckboxWidget enabled = CheckboxWidget.builder(Text.literal("\u542f\u7528 AI \u804a\u5929"), textRenderer)
@@ -86,14 +84,14 @@ public final class AIPlayerConfigScreen extends Screen {
                 .build());
     }
 
-    private void addField(String label, String value, int maxLength, int y, FieldSetter setter) {
+    private void addField(String label, String description, String value, int maxLength, int y, FieldSetter setter) {
         int x = width / 2 - FIELD_WIDTH / 2;
-        TextFieldWidget field = new TextFieldWidget(textRenderer, x, y + 14, FIELD_WIDTH, FIELD_HEIGHT, Text.literal(label));
+        TextFieldWidget field = new TextFieldWidget(textRenderer, x, y + 26, FIELD_WIDTH, FIELD_HEIGHT, Text.literal(label));
         field.setMaxLength(maxLength);
         field.setText(value == null ? "" : value);
         field.setChangedListener(setter::set);
         field.visible = isRowVisible(y);
-        fields.add(new FieldRow(label, field, y));
+        fields.add(new FieldRow(label, description, field, y));
         addDrawableChild(field);
     }
 
@@ -108,6 +106,7 @@ public final class AIPlayerConfigScreen extends Screen {
         for (FieldRow row : fields) {
             if (isRowVisible(row.y())) {
                 context.drawTextWithShadow(textRenderer, row.label(), row.field().getX(), row.y(), 0xD8D8D8);
+                context.drawTextWithShadow(textRenderer, row.description(), row.field().getX(), row.y() + 10, 0x9098A8);
             }
         }
 
@@ -121,7 +120,7 @@ public final class AIPlayerConfigScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        int maxScroll = Math.max(0, ROW * 6 - (height - 120));
+        int maxScroll = Math.max(0, ROW * 5 - (height - 120));
         scroll = Math.max(0, Math.min(maxScroll, scroll - (int) (verticalAmount * 18)));
         clearAndInit();
         return true;
@@ -143,7 +142,7 @@ public final class AIPlayerConfigScreen extends Screen {
         return y > 52 && y < height - 58;
     }
 
-    private record FieldRow(String label, TextFieldWidget field, int y) {
+    private record FieldRow(String label, String description, TextFieldWidget field, int y) {
     }
 
     private interface FieldSetter {
