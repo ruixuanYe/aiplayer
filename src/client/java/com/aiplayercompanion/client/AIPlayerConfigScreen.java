@@ -14,9 +14,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class AIPlayerConfigScreen extends Screen {
-    private static final int FIELD_WIDTH = 360;
+    private static final int FIELD_WIDTH = 420;
     private static final int FIELD_HEIGHT = 20;
-    private static final int ROW = 68;
+    private static final int ROW = 76;
 
     private final Screen parent;
     private final List<FieldRow> fields = new ArrayList<>();
@@ -37,13 +37,21 @@ public final class AIPlayerConfigScreen extends Screen {
 
         int centerX = width / 2;
         int y = 74 - scroll;
-        addField("\u0041\u0050\u0049 \u5730\u5740", "\u4f8b\uff1ahttp://127.0.0.1:1234/v1/chat/completions", config.apiUrl, 500, y, text -> config.apiUrl = text);
+        addField("\u0041\u0050\u0049 \u5730\u5740",
+                "\u586b LM Studio Local Server \u7684 OpenAI-compatible \u804a\u5929\u63a5\u53e3",
+                "http://127.0.0.1:1234/v1/chat/completions", config.apiUrl, 500, y, text -> config.apiUrl = text);
         y += ROW;
-        addField("\u6a21\u578b\u540d\u79f0", "\u5728 LM Studio \u7684 Local Server / Models \u91cc\u67e5\u770b\uff0c\u9700\u8981\u548c\u670d\u52a1\u7aef\u6a21\u578b ID \u4e00\u81f4", config.modelName, 200, y, text -> config.modelName = text);
+        addField("\u6a21\u578b ID",
+                "\u586b LM Studio \u5f53\u524d\u52a0\u8f7d\u6a21\u578b\u7684 ID\uff0c\u4f8b\uff1adeepseek/deepseek-r1-0528-qwen3-8b",
+                "local-model", config.modelName, 200, y, text -> config.modelName = text);
         y += ROW;
-        addField("API Key / Token", "LM Studio \u672c\u5730\u670d\u52a1\u901a\u5e38\u7559\u7a7a\uff1b\u63a5 OpenAI \u6216\u5176\u4ed6 API \u65f6\u518d\u586b", config.apiKey, 500, y, text -> config.apiKey = text);
+        addField("API Key / Token",
+                "LM Studio \u672c\u5730\u901a\u5e38\u7559\u7a7a\uff1b\u53ea\u6709\u63a5\u9700\u8981 key \u7684 API \u624d\u586b",
+                "\u53ef\u7559\u7a7a", config.apiKey, 500, y, text -> config.apiKey = text);
         y += ROW;
-        addField("\u8d85\u65f6\u79d2\u6570", "\u8bf7\u6c42\u6700\u591a\u7b49\u5f85\u591a\u5c11\u79d2\uff0c\u5efa\u8bae 15", String.valueOf(config.timeoutSeconds), 3, y, text -> {
+        addField("\u8d85\u65f6\u79d2\u6570",
+                "\u6a21\u578b\u56de\u590d\u6700\u591a\u7b49\u5f85\u591a\u5c11\u79d2\uff0c\u5efa\u8bae 15",
+                "15", String.valueOf(config.timeoutSeconds), 3, y, text -> {
             try {
                 config.timeoutSeconds = Integer.parseInt(text.trim());
             } catch (NumberFormatException ignored) {
@@ -84,11 +92,12 @@ public final class AIPlayerConfigScreen extends Screen {
                 .build());
     }
 
-    private void addField(String label, String description, String value, int maxLength, int y, FieldSetter setter) {
+    private void addField(String label, String description, String placeholder, String value, int maxLength, int y, FieldSetter setter) {
         int x = width / 2 - FIELD_WIDTH / 2;
-        TextFieldWidget field = new TextFieldWidget(textRenderer, x, y + 26, FIELD_WIDTH, FIELD_HEIGHT, Text.literal(label));
+        TextFieldWidget field = new TextFieldWidget(textRenderer, x, y + 34, FIELD_WIDTH, FIELD_HEIGHT, Text.literal(label));
         field.setMaxLength(maxLength);
         field.setText(value == null ? "" : value);
+        field.setPlaceholder(Text.literal(placeholder));
         field.setChangedListener(setter::set);
         field.visible = isRowVisible(y);
         fields.add(new FieldRow(label, description, field, y));
@@ -98,15 +107,18 @@ public final class AIPlayerConfigScreen extends Screen {
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         context.fill(0, 0, width, height, 0xD0101010);
-        context.fill(width / 2 - 220, 58, width / 2 + 220, height - 44, 0xCC181C24);
-        context.drawBorder(width / 2 - 220, 58, 440, height - 102, 0xFF3A4254);
+        context.fill(width / 2 - 250, 58, width / 2 + 250, height - 44, 0xCC181C24);
+        context.drawBorder(width / 2 - 250, 58, 500, height - 102, 0xFF3A4254);
+
+        super.render(context, mouseX, mouseY, delta);
+
         context.drawTextWithShadow(textRenderer, title, width / 2 - textRenderer.getWidth(title) / 2, 18, 0xFFFFFF);
         context.drawTextWithShadow(textRenderer, Text.literal("\u672c\u5730\u6a21\u578b\u8fde\u63a5\u548c API \u8bbe\u7f6e"), width / 2 - 88, 40, 0xA0A0A0);
 
         for (FieldRow row : fields) {
             if (isRowVisible(row.y())) {
-                context.drawTextWithShadow(textRenderer, row.label(), row.field().getX(), row.y(), 0xD8D8D8);
-                context.drawTextWithShadow(textRenderer, row.description(), row.field().getX(), row.y() + 10, 0x9098A8);
+                context.drawTextWithShadow(textRenderer, row.label(), row.field().getX(), row.y(), 0xFFFFFF);
+                context.drawTextWithShadow(textRenderer, row.description(), row.field().getX(), row.y() + 13, 0xA8B0C0);
             }
         }
 
@@ -114,8 +126,6 @@ public final class AIPlayerConfigScreen extends Screen {
             String visible = status.length() > 80 ? status.substring(0, 80) : status;
             context.drawTextWithShadow(textRenderer, Text.literal(visible), width / 2 - FIELD_WIDTH / 2, height - 52, 0xFFFF55);
         }
-
-        super.render(context, mouseX, mouseY, delta);
     }
 
     @Override
@@ -139,7 +149,7 @@ public final class AIPlayerConfigScreen extends Screen {
     }
 
     private boolean isRowVisible(int y) {
-        return y > 52 && y < height - 58;
+        return y + FIELD_HEIGHT + 34 > 58 && y < height - 58;
     }
 
     private record FieldRow(String label, String description, TextFieldWidget field, int y) {
