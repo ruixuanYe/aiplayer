@@ -18,12 +18,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 public final class CarpetAIPlayerManager {
     public static final String AI_TAG = "aiplayer_companion.managed";
     public static final String TEAM_NAME = "aiplayer_companion";
 
     private static final String CARPET_MOD_ID = "carpet";
+    private static final Pattern SAFE_NAME_CHARS = Pattern.compile("[^A-Za-z0-9_]");
     private static final int SPAWN_CONFIRM_TICKS = 40;
     private static final Map<UUID, PendingSpawn> PENDING_SPAWNS = new HashMap<>();
 
@@ -45,6 +47,7 @@ public final class CarpetAIPlayerManager {
         }
 
         AIPlayerCleanConfig config = AIPlayerCleanConfig.get();
+        applyModelNameIfUnbound(config);
         Optional<ServerPlayerEntity> existingManaged = findManaged(owner.getServer(), config);
         if (existingManaged.isPresent()) {
             ServerPlayerEntity bot = existingManaged.get();
@@ -76,6 +79,7 @@ public final class CarpetAIPlayerManager {
     public static int remove(ServerCommandSource source, ServerPlayerEntity owner) {
         AIPlayerCleanConfig config = AIPlayerCleanConfig.get();
         PENDING_SPAWNS.remove(owner.getUuid());
+        com.aiplayercompanion.respawn.AIPlayerRespawnController.suppressRespawn(owner);
         Optional<ServerPlayerEntity> managed = findManaged(owner.getServer(), config);
         if (managed.isEmpty()) {
             owner.sendMessage(Text.literal("没有找到 AIPlayer 管理的 Carpet 假玩家。").formatted(Formatting.YELLOW), false);
@@ -181,7 +185,7 @@ public final class CarpetAIPlayerManager {
         return Optional.empty();
     }
 
-    private static void finishSpawn(ServerPlayerEntity owner, ServerPlayerEntity spawned) {
+    public static void finishSpawn(ServerPlayerEntity owner, ServerPlayerEntity spawned) {
         markAsAIPlayer(spawned, owner);
         AIPlayerCleanConfig.get().remember(spawned.getName().getString(), spawned.getUuidAsString(), owner.getUuidAsString());
         owner.sendMessage(Text.literal("AIPlayer Carpet 假玩家已生成：" + spawned.getName().getString() + "，分类=AIPlayer，已切换为生存模式。").formatted(Formatting.GREEN), false);
@@ -230,6 +234,43 @@ public final class CarpetAIPlayerManager {
 
     public static void executeCarpetCommand(ServerCommandSource source, String command) {
         source.getServer().getCommandManager().executeWithPrefix(source.withLevel(4).withSilent(), command);
+    }
+
+    public static String deriveBotNameFromModel(String modelName) {
+        String lower = modelName == null ? "" : modelName.toLowerCase();
+        String detected;
+        if (lower.contains("deepseek")) {
+            detected = "AIDeepSeekR1";
+        } else if (lower.contains("claude")) {
+            detected = "AIClaude";
+        } else if (lower.contains("gemini")) {
+            detected = "AIGemini";
+        } else if (lower.contains("qwen")) {
+            detected = "AIQwen";
+        } else {
+            String[] parts = lower.split("[/:_-]+");
+            detected = parts.length == 0 || parts[parts.length - 1].isBlank() ? "AIPlayerBot" : "AI" + capitalize(parts[parts.length - 1]);
+        }
+        detected = SAFE_NAME_CHARS.matcher(detected).replaceAll("");
+        if (detected.isBlank()) {
+            detected = "AIPlayerBot";
+        }
+        return detected.length() > 16 ? detected.substring(0, 16) : detected;
+    }
+
+    private static void applyModelNameIfUnbound(AIPlayerCleanConfig config) {
+        if (!config.autoNameFromModel || (config.botUuid != null && !config.botUuid.isBlank())) {
+            return;
+        }
+        config.botName = deriveBotNameFromModel(config.modelName);
+        AIPlayerCleanConfig.save();
+    }
+
+    private static String capitalize(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
     }
 
     private record PendingSpawn(UUID ownerUuid, String botName, long startedTick, boolean notified) {

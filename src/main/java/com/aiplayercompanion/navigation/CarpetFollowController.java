@@ -99,6 +99,11 @@ public final class CarpetFollowController {
         return tryTeleportNearOwner(source, bot.get(), owner, "requested") ? 1 : 0;
     }
 
+    public static boolean teleportBotNearOwner(ServerCommandSource source, ServerPlayerEntity bot, ServerPlayerEntity owner, String reason) {
+        teleportCooldown = 0;
+        return tryTeleportNearOwner(source, bot, owner, reason);
+    }
+
     public static void stopAll(ServerCommandSource source, ServerPlayerEntity bot) {
         command(source, bot, "stop");
         command(source, bot, "unsprint");

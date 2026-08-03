@@ -27,6 +27,10 @@ public final class AIPlayerCleanConfig {
     public int timeoutSeconds = 15;
     public boolean aiChatEnabled = true;
     public String systemPrompt = DEFAULT_SYSTEM_PROMPT;
+    public boolean autoNameFromModel = true;
+    public boolean autoRespawn = true;
+    public int respawnDelaySeconds = 5;
+    public int respawnRetrySeconds = 5;
     public String behaviorMode = "FOLLOWING";
     public double startFollowDistance = 4.0;
     public double stopFollowDistance = 2.8;
@@ -98,6 +102,12 @@ public final class AIPlayerCleanConfig {
         }
         if (timeoutSeconds < 1 || timeoutSeconds > 120) {
             timeoutSeconds = 15;
+        }
+        if (respawnDelaySeconds < 1 || respawnDelaySeconds > 60) {
+            respawnDelaySeconds = 5;
+        }
+        if (respawnRetrySeconds < 1 || respawnRetrySeconds > 60) {
+            respawnRetrySeconds = 5;
         }
         if (!"WAITING".equals(behaviorMode)) {
             behaviorMode = "FOLLOWING";
