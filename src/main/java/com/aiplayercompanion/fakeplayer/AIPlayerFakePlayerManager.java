@@ -16,6 +16,7 @@ import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.GameMode;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -56,6 +57,7 @@ public final class AIPlayerFakePlayerManager {
 
         server.getPlayerManager().onPlayerConnect(new AIPlayerClientConnection(), fake, ConnectedClientData.createDefault(profile, false));
         fake.networkHandler = new net.fabricmc.fabric.impl.event.interaction.FakePlayerNetworkHandler(fake);
+        fake.changeGameMode(GameMode.SURVIVAL);
         fake.prepareAt(position, owner.getYaw(), 0.0F);
         owner.sendMessage(Text.literal("AIPlayer 假玩家已生成：" + fake.getName().getString()).formatted(Formatting.GREEN), false);
         AIPlayerCompanionMod.LOGGER.info("Spawned clean fake player {} for {}", fake.getName().getString(), owner.getName().getString());
@@ -84,7 +86,6 @@ public final class AIPlayerFakePlayerManager {
             if (!(player instanceof AIPlayerFakePlayer fake)) {
                 continue;
             }
-            fake.enforceSurvivalPlayerState();
             if (fake.deathTime > DEATH_REMOVE_TICKS) {
                 remove(server, fake);
             }

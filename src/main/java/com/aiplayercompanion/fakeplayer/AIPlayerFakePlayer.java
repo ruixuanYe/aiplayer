@@ -8,7 +8,6 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.GameMode;
 
 import java.util.UUID;
 
@@ -27,8 +26,14 @@ public final class AIPlayerFakePlayer extends ServerPlayerEntity {
 
     @Override
     public void tick() {
-        enforceSurvivalPlayerState();
+        if (age % 10 == 0) {
+            networkHandler.syncWithPlayerPosition();
+            getWorld().getChunkManager().updatePosition(this);
+        }
         super.tick();
+        if (!isRemoved() && isAlive()) {
+            playerTick();
+        }
     }
 
     public void prepareAt(Vec3d position, float yaw, float pitch) {
@@ -41,6 +46,7 @@ public final class AIPlayerFakePlayer extends ServerPlayerEntity {
         hurtTime = 0;
         maxHurtTime = 0;
         setPose(EntityPose.STANDING);
+        enforceSurvivalPlayerState();
     }
 
     public void enforceSurvivalPlayerState() {
@@ -50,6 +56,5 @@ public final class AIPlayerFakePlayer extends ServerPlayerEntity {
         getAbilities().creativeMode = false;
         getAbilities().allowFlying = false;
         getAbilities().flying = false;
-        changeGameMode(GameMode.SURVIVAL);
     }
 }
