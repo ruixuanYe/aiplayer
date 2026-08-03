@@ -36,6 +36,8 @@ public final class AIPlayerCleanConfig {
     public double stopFollowDistance = 2.8;
     public double sprintDistance = 10.0;
     public double teleportDistance = 32.0;
+    public int pathMaxNodes = 2000;
+    public double pathMaxDistance = 48.0;
 
     private static AIPlayerCleanConfig INSTANCE;
 
@@ -123,6 +125,12 @@ public final class AIPlayerCleanConfig {
         }
         if (teleportDistance < 12.0 || teleportDistance > 128.0) {
             teleportDistance = 32.0;
+        }
+        if (pathMaxNodes < 256 || pathMaxNodes > 12000) {
+            pathMaxNodes = 2000;
+        }
+        if (pathMaxDistance < 16.0 || pathMaxDistance > 128.0) {
+            pathMaxDistance = 48.0;
         }
         systemPrompt = DEFAULT_SYSTEM_PROMPT;
     }

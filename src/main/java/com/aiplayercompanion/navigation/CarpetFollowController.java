@@ -2,6 +2,9 @@ package com.aiplayercompanion.navigation;
 
 import com.aiplayercompanion.carpet.CarpetAIPlayerManager;
 import com.aiplayercompanion.config.AIPlayerCleanConfig;
+import com.aiplayercompanion.pathing.AIPlayerPathfinder;
+import com.aiplayercompanion.pathing.CarpetPathExecutor;
+import com.aiplayercompanion.pathing.PathResult;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
@@ -26,14 +29,19 @@ import java.util.UUID;
 public final class CarpetFollowController {
     private static final int TICK_INTERVAL = 5;
     private static final int MAX_JUMP_ATTEMPTS = 6;
+    private static final int PATH_REPLAN_TICKS = 20;
+    private static final int TELEPORT_AFTER_PATH_FAILURES = 8;
 
     private static long lastTick;
+    private static long lastPathPlanTick;
     private static boolean moving;
     private static boolean sprinting;
     private static int stuckTicks;
     private static int jumpAttempts;
     private static int useCooldown;
     private static int teleportCooldown;
+    private static int pathFailures;
+    private static BlockPos lastOwnerTarget = BlockPos.ORIGIN;
     private static Vec3d lastPos = Vec3d.ZERO;
 
     private CarpetFollowController() {
@@ -107,6 +115,7 @@ public final class CarpetFollowController {
     public static void stopAll(ServerCommandSource source, ServerPlayerEntity bot) {
         command(source, bot, "stop");
         command(source, bot, "unsprint");
+        CarpetPathExecutor.reset(source, bot);
         moving = false;
         sprinting = false;
     }
@@ -153,22 +162,50 @@ public final class CarpetFollowController {
             return;
         }
 
-        if (tryOpenDoor(source, bot, owner)) {
-            return;
-        }
-
-        face(bot, owner.getEyePos());
         if (distance <= config.stopFollowDistance) {
             stopAll(source, bot);
             return;
         }
 
         if (distance >= config.startFollowDistance) {
-            setSprint(source, bot, distance >= config.sprintDistance);
-            jumpIfStuckOrBlocked(source, bot, owner);
-            if (!moving) {
-                command(source, bot, "move forward");
-                moving = true;
+            followWithPath(source, bot, owner, config);
+        }
+    }
+
+    private static void followWithPath(ServerCommandSource source, ServerPlayerEntity bot, ServerPlayerEntity owner, AIPlayerCleanConfig config) {
+        long now = bot.getServer().getTicks();
+        boolean ownerMoved = lastOwnerTarget == BlockPos.ORIGIN || owner.getBlockPos().getSquaredDistance(lastOwnerTarget) > 6.0;
+        boolean needsPath = !CarpetPathExecutor.hasPath()
+                || ownerMoved
+                || now - lastPathPlanTick >= PATH_REPLAN_TICKS;
+
+        if (needsPath) {
+            PathResult result = AIPlayerPathfinder.findPath(bot, owner, config);
+            lastPathPlanTick = now;
+            lastOwnerTarget = owner.getBlockPos().toImmutable();
+            if (result.found()) {
+                CarpetPathExecutor.setPath(result.steps());
+                pathFailures = 0;
+            } else {
+                pathFailures++;
+                if (pathFailures >= TELEPORT_AFTER_PATH_FAILURES && bot.distanceTo(owner) > 10.0) {
+                    stopAll(source, bot);
+                    tryTeleportNearOwner(source, bot, owner, "path blocked");
+                    pathFailures = 0;
+                } else {
+                    stopAll(source, bot);
+                }
+                return;
+            }
+        }
+
+        CarpetPathExecutor.ExecutionState state = CarpetPathExecutor.tick(source, bot, owner, config);
+        if (state == CarpetPathExecutor.ExecutionState.STUCK) {
+            pathFailures++;
+            CarpetPathExecutor.reset(source, bot);
+            if (pathFailures >= TELEPORT_AFTER_PATH_FAILURES && bot.distanceTo(owner) > 10.0) {
+                tryTeleportNearOwner(source, bot, owner, "stuck");
+                pathFailures = 0;
             }
         }
     }
@@ -360,5 +397,8 @@ public final class CarpetFollowController {
         lastPos = Vec3d.ZERO;
         useCooldown = 0;
         teleportCooldown = 0;
+        pathFailures = 0;
+        lastPathPlanTick = 0;
+        lastOwnerTarget = BlockPos.ORIGIN;
     }
 }
