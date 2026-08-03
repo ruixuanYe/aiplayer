@@ -2,6 +2,7 @@ package com.aiplayercompanion.command;
 
 import com.aiplayercompanion.ai.LMStudioClient;
 import com.aiplayercompanion.carpet.CarpetAIPlayerManager;
+import com.aiplayercompanion.chat.AIChatBridge;
 import com.aiplayercompanion.navigation.CarpetFollowController;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.CommandDispatcher;
@@ -94,14 +95,7 @@ public final class AIPlayerCommand {
 
     private static int aiChat(ServerCommandSource source, String message) {
         ServerPlayerEntity player = requirePlayer(source);
-        player.sendMessage(Text.literal("AIPlayer：正在思考...").formatted(Formatting.YELLOW), false);
-        LMStudioClient.chat(message).thenAccept(response -> source.getServer().execute(() -> {
-            if (response.ok()) {
-                player.sendMessage(Text.literal("AIPlayer：" + response.content()).formatted(Formatting.AQUA), false);
-            } else {
-                player.sendMessage(Text.literal("AIPlayer：没有可显示的回复：" + response.error()).formatted(Formatting.RED), false);
-            }
-        }));
+        AIChatBridge.sendToAi(source.getServer(), player, message, true);
         return 1;
     }
 

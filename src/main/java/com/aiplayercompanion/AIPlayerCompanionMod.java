@@ -2,6 +2,7 @@ package com.aiplayercompanion;
 
 import com.aiplayercompanion.command.AIPlayerCommand;
 import com.aiplayercompanion.carpet.CarpetAIPlayerManager;
+import com.aiplayercompanion.chat.AIChatBridge;
 import com.aiplayercompanion.config.AIPlayerCleanConfig;
 import com.aiplayercompanion.navigation.CarpetFollowController;
 import com.aiplayercompanion.respawn.AIPlayerRespawnController;
@@ -17,6 +18,7 @@ public final class AIPlayerCompanionMod implements ModInitializer {
     public void onInitialize() {
         AIPlayerCleanConfig.load();
         CarpetAIPlayerManager.initialize();
+        AIChatBridge.initialize();
         CarpetFollowController.initialize();
         AIPlayerRespawnController.initialize();
         AIPlayerCommand.register();

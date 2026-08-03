@@ -30,7 +30,7 @@ public final class CarpetFollowController {
     private static final int TICK_INTERVAL = 5;
     private static final int MAX_JUMP_ATTEMPTS = 6;
     private static final int PATH_REPLAN_TICKS = 20;
-    private static final int TELEPORT_AFTER_PATH_FAILURES = 8;
+    private static final int TELEPORT_AFTER_PATH_FAILURES = 24;
 
     private static long lastTick;
     private static long lastPathPlanTick;
@@ -188,7 +188,7 @@ public final class CarpetFollowController {
                 pathFailures = 0;
             } else {
                 pathFailures++;
-                if (pathFailures >= TELEPORT_AFTER_PATH_FAILURES && bot.distanceTo(owner) > 10.0) {
+                if (shouldUseFallbackTeleport(bot, owner, config)) {
                     stopAll(source, bot);
                     tryTeleportNearOwner(source, bot, owner, "path blocked");
                     pathFailures = 0;
@@ -203,11 +203,17 @@ public final class CarpetFollowController {
         if (state == CarpetPathExecutor.ExecutionState.STUCK) {
             pathFailures++;
             CarpetPathExecutor.reset(source, bot);
-            if (pathFailures >= TELEPORT_AFTER_PATH_FAILURES && bot.distanceTo(owner) > 10.0) {
+            if (shouldUseFallbackTeleport(bot, owner, config)) {
                 tryTeleportNearOwner(source, bot, owner, "stuck");
                 pathFailures = 0;
             }
         }
+    }
+
+    private static boolean shouldUseFallbackTeleport(ServerPlayerEntity bot, ServerPlayerEntity owner, AIPlayerCleanConfig config) {
+        double distance = bot.distanceTo(owner);
+        return pathFailures >= TELEPORT_AFTER_PATH_FAILURES
+                && distance > Math.max(18.0, config.teleportDistance * 0.75);
     }
 
     private static Optional<ServerPlayerEntity> findBot(MinecraftServer server) {
