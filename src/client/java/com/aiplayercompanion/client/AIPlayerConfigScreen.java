@@ -37,13 +37,13 @@ public final class AIPlayerConfigScreen extends Screen {
 
         int centerX = width / 2;
         int y = 74 - scroll;
-        addField("API 地址", config.apiUrl, 500, y, text -> config.apiUrl = text);
+        addField("\u0041\u0050\u0049 \u5730\u5740", config.apiUrl, 500, y, text -> config.apiUrl = text);
         y += ROW;
-        addField("模型名称", config.modelName, 200, y, text -> config.modelName = text);
+        addField("\u6a21\u578b\u540d\u79f0", config.modelName, 200, y, text -> config.modelName = text);
         y += ROW;
         addField("API Key / Token", config.apiKey, 500, y, text -> config.apiKey = text);
         y += ROW;
-        addField("超时秒数", String.valueOf(config.timeoutSeconds), 3, y, text -> {
+        addField("\u8d85\u65f6\u79d2\u6570", String.valueOf(config.timeoutSeconds), 3, y, text -> {
             try {
                 config.timeoutSeconds = Integer.parseInt(text.trim());
             } catch (NumberFormatException ignored) {
@@ -51,10 +51,10 @@ public final class AIPlayerConfigScreen extends Screen {
             }
         });
         y += ROW;
-        addField("AI 系统提示词", config.systemPrompt, 1000, y, text -> config.systemPrompt = text);
+        addField("\u0041\u0049 \u7cfb\u7edf\u63d0\u793a\u8bcd", config.systemPrompt, 1000, y, text -> config.systemPrompt = text);
         y += ROW;
 
-        CheckboxWidget enabled = CheckboxWidget.builder(Text.literal("启用 AI 聊天"), textRenderer)
+        CheckboxWidget enabled = CheckboxWidget.builder(Text.literal("\u542f\u7528 AI \u804a\u5929"), textRenderer)
                 .pos(centerX - FIELD_WIDTH / 2, y)
                 .checked(aiChatEnabled)
                 .callback((checkbox, checked) -> {
@@ -65,22 +65,23 @@ public final class AIPlayerConfigScreen extends Screen {
         enabled.visible = isRowVisible(y);
         addDrawableChild(enabled);
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("保存"), button -> {
+        addDrawableChild(ButtonWidget.builder(Text.literal("\u4fdd\u5b58"), button -> {
             AIPlayerCleanConfig.get().aiChatEnabled = aiChatEnabled;
             AIPlayerCleanConfig.save();
-            status = "已保存";
+            status = "\u5df2\u4fdd\u5b58";
         }).dimensions(centerX - 185, height - 32, 80, 20).build());
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("测试连接"), button -> {
+        addDrawableChild(ButtonWidget.builder(Text.literal("\u6d4b\u8bd5\u8fde\u63a5"), button -> {
             AIPlayerCleanConfig.get().aiChatEnabled = aiChatEnabled;
             AIPlayerCleanConfig.save();
-            status = "测试中...";
-            LMStudioClient.test().thenAccept(response -> MinecraftClient.getInstance().execute(() -> {
-                status = response.ok() ? "连接成功：" + response.content() : "连接失败：" + response.error();
-            }));
+            status = "\u6d4b\u8bd5\u4e2d...";
+            LMStudioClient.test().thenAccept(response -> MinecraftClient.getInstance().execute(() ->
+                    status = response.ok()
+                            ? "\u8fde\u63a5\u6210\u529f\uff1a" + response.content()
+                            : "\u8fde\u63a5\u5931\u8d25\uff1a" + response.error()));
         }).dimensions(centerX - 95, height - 32, 110, 20).build());
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("完成"), button -> close())
+        addDrawableChild(ButtonWidget.builder(Text.literal("\u5b8c\u6210"), button -> close())
                 .dimensions(centerX + 25, height - 32, 80, 20)
                 .build());
     }
@@ -98,9 +99,11 @@ public final class AIPlayerConfigScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        renderBackground(context, mouseX, mouseY, delta);
+        context.fill(0, 0, width, height, 0xD0101010);
+        context.fill(width / 2 - 220, 58, width / 2 + 220, height - 44, 0xCC181C24);
+        context.drawBorder(width / 2 - 220, 58, 440, height - 102, 0xFF3A4254);
         context.drawTextWithShadow(textRenderer, title, width / 2 - textRenderer.getWidth(title) / 2, 18, 0xFFFFFF);
-        context.drawTextWithShadow(textRenderer, Text.literal("本地模型连接、聊天触发和 API 设置"), width / 2 - 110, 40, 0xA0A0A0);
+        context.drawTextWithShadow(textRenderer, Text.literal("\u672c\u5730\u6a21\u578b\u8fde\u63a5\u548c API \u8bbe\u7f6e"), width / 2 - 88, 40, 0xA0A0A0);
 
         for (FieldRow row : fields) {
             if (isRowVisible(row.y())) {
