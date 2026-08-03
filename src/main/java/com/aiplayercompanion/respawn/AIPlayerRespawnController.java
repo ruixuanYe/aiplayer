@@ -11,9 +11,9 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec2f;
 import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -72,9 +72,12 @@ public final class AIPlayerRespawnController {
         ServerPlayerEntity byName = server.getPlayerManager().getPlayer(config.botName);
         if (byName != null) {
             CarpetAIPlayerManager.finishSpawn(owner, byName);
+            CarpetAIPlayerManager.forceSurvival(byName);
             owner.sendMessage(Text.literal("AIPlayer has respawned at spawn.").formatted(Formatting.GREEN), false);
             resetMissingState();
-            if (byName.getWorld() == owner.getWorld()) {
+            if (canWalkFromSpawnToOwner(byName, owner, config)) {
+                owner.sendMessage(Text.literal("AIPlayer will walk back from spawn.").formatted(Formatting.YELLOW), false);
+            } else if (byName.getWorld() == owner.getWorld()) {
                 CarpetFollowController.teleportBotNearOwner(byName.getCommandSource(), byName, owner, "respawned");
             } else {
                 owner.sendMessage(Text.literal("AIPlayer respawned in another dimension and will wait there.").formatted(Formatting.YELLOW), false);
@@ -117,13 +120,18 @@ public final class AIPlayerRespawnController {
                 .withPosition(Vec3d.ofBottomCenter(spawnPos))
                 .withRotation(Vec2f.ZERO);
         CarpetAIPlayerManager.executeCarpetCommand(spawnSource, "player " + config.botName + " spawn");
+        ServerPlayerEntity spawned = server.getPlayerManager().getPlayer(config.botName);
+        if (spawned != null) {
+            CarpetAIPlayerManager.forceSurvival(spawned);
+        }
     }
 
     private static void tryTeleportIfNeeded(MinecraftServer server, ServerPlayerEntity owner, ServerPlayerEntity bot, AIPlayerCleanConfig config) {
+        CarpetAIPlayerManager.forceSurvival(bot);
         if (owner.getWorld() != bot.getWorld()) {
             return;
         }
-        if (bot.distanceTo(owner) <= config.teleportDistance) {
+        if (canWalkFromSpawnToOwner(bot, owner, config)) {
             return;
         }
         long retryTicks = Math.max(1, config.respawnRetrySeconds) * 20L;
@@ -132,6 +140,42 @@ public final class AIPlayerRespawnController {
         }
         lastTeleportAttemptTick = server.getTicks();
         CarpetFollowController.teleportBotNearOwner(bot.getCommandSource(), bot, owner, "respawned");
+    }
+
+    private static boolean canWalkFromSpawnToOwner(ServerPlayerEntity bot, ServerPlayerEntity owner, AIPlayerCleanConfig config) {
+        if (bot.getWorld() != owner.getWorld()) {
+            return false;
+        }
+        double distance = bot.distanceTo(owner);
+        if (distance <= config.stopFollowDistance) {
+            return true;
+        }
+        if (distance > config.teleportDistance) {
+            return false;
+        }
+        double yDiff = Math.abs(bot.getY() - owner.getY());
+        if (yDiff > 5.0) {
+            return false;
+        }
+        return roughlyClearHorizontalRoute(bot, owner);
+    }
+
+    private static boolean roughlyClearHorizontalRoute(ServerPlayerEntity bot, ServerPlayerEntity owner) {
+        Vec3d start = bot.getPos();
+        Vec3d end = owner.getPos();
+        int steps = Math.max(1, (int) Math.ceil(start.distanceTo(end)));
+        for (int i = 1; i < steps; i++) {
+            double t = (double) i / steps;
+            double x = start.x + (end.x - start.x) * t;
+            double z = start.z + (end.z - start.z) * t;
+            int y = MathHelper.floor(start.y + (end.y - start.y) * t);
+            BlockPos feet = BlockPos.ofFloored(x, y, z);
+            if (!bot.getWorld().getBlockState(feet).getCollisionShape(bot.getWorld(), feet).isEmpty()
+                    || !bot.getWorld().getBlockState(feet.up()).getCollisionShape(bot.getWorld(), feet.up()).isEmpty()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static ServerPlayerEntity findOwner(MinecraftServer server, AIPlayerCleanConfig config) {

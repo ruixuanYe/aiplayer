@@ -219,7 +219,7 @@ public final class CarpetAIPlayerManager {
         scoreboard.addScoreHolderToTeam(bot.getNameForScoreboard(), team);
     }
 
-    private static void forceSurvival(ServerPlayerEntity bot) {
+    public static void forceSurvival(ServerPlayerEntity bot) {
         bot.changeGameMode(GameMode.SURVIVAL);
         bot.getAbilities().creativeMode = false;
         bot.getAbilities().allowFlying = false;
