@@ -11,5 +11,6 @@
   "command.aiplayer.chat_unavailable": "LM Studio 暂时不可用。",
   "command.aiplayer.chat_empty": "AI 没有返回可显示的内容。",
   "category.aiplayer_companion": "AIPlayer Companion",
-  "key.aiplayer_companion.open_config": "打开 AIPlayer 设置"
+  "key.aiplayer_companion.open_config": "打开 AIPlayer 设置",
+  "key.aiplayer_companion.open_menu": "打开 AIPlayer 菜单"
 }

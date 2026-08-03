@@ -31,6 +31,7 @@ public final class AIPlayerCommand {
                 .then(literal("follow").executes(context -> follow(context.getSource())))
                 .then(literal("stop").executes(context -> stop(context.getSource())))
                 .then(literal("come").executes(context -> come(context.getSource())))
+                .then(literal("teleport").executes(context -> teleport(context.getSource())))
                 .then(literal("ai")
                         .then(literal("test").executes(context -> aiTest(context.getSource())))
                         .then(literal("chat")
@@ -71,6 +72,11 @@ public final class AIPlayerCommand {
     private static int come(ServerCommandSource source) {
         ServerPlayerEntity owner = requirePlayer(source);
         return CarpetFollowController.come(source, owner);
+    }
+
+    private static int teleport(ServerCommandSource source) {
+        ServerPlayerEntity owner = requirePlayer(source);
+        return CarpetFollowController.teleport(source, owner);
     }
 
     private static int aiTest(ServerCommandSource source) {

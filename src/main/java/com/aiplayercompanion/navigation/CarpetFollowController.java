@@ -84,6 +84,21 @@ public final class CarpetFollowController {
         return 1;
     }
 
+    public static int teleport(ServerCommandSource source, ServerPlayerEntity owner) {
+        AIPlayerCleanConfig config = AIPlayerCleanConfig.get();
+        if (!isOwner(owner, config)) {
+            owner.sendMessage(Text.literal("AIPlayer: only the owner can control this bot.").formatted(Formatting.RED), false);
+            return 0;
+        }
+        Optional<ServerPlayerEntity> bot = findBot(source.getServer());
+        if (bot.isEmpty()) {
+            owner.sendMessage(Text.literal("AIPlayer is not spawned.").formatted(Formatting.YELLOW), false);
+            return 0;
+        }
+        teleportCooldown = 0;
+        return tryTeleportNearOwner(source, bot.get(), owner, "requested") ? 1 : 0;
+    }
+
     public static void stopAll(ServerCommandSource source, ServerPlayerEntity bot) {
         command(source, bot, "stop");
         command(source, bot, "unsprint");

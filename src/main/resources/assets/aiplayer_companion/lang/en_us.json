@@ -11,5 +11,6 @@
   "command.aiplayer.chat_unavailable": "LM Studio is unavailable right now.",
   "command.aiplayer.chat_empty": "AI returned no displayable content.",
   "category.aiplayer_companion": "AIPlayer Companion",
-  "key.aiplayer_companion.open_config": "Open AIPlayer Settings"
+  "key.aiplayer_companion.open_config": "Open AIPlayer Settings",
+  "key.aiplayer_companion.open_menu": "Open AIPlayer Menu"
 }
