@@ -5,21 +5,19 @@ import com.aiplayercompanion.config.AIPlayerCleanConfig;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.CheckboxWidget;
+import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public final class AIPlayerConfigScreen extends Screen {
-    private static final int FIELD_WIDTH = 420;
+    private static final int FIELD_WIDTH = 520;
     private static final int FIELD_HEIGHT = 20;
-    private static final int ROW = 76;
+    private static final int ROW = 84;
 
     private final Screen parent;
-    private final List<FieldRow> fields = new ArrayList<>();
     private int scroll;
     private boolean aiChatEnabled;
     private String status = "";
@@ -31,12 +29,11 @@ public final class AIPlayerConfigScreen extends Screen {
 
     @Override
     protected void init() {
-        fields.clear();
         AIPlayerCleanConfig config = AIPlayerCleanConfig.get();
         aiChatEnabled = config.aiChatEnabled;
 
         int centerX = width / 2;
-        int y = 74 - scroll;
+        int y = 76 - scroll;
         addField("\u0041\u0050\u0049 \u5730\u5740",
                 "\u586b LM Studio Local Server \u7684 OpenAI-compatible \u804a\u5929\u63a5\u53e3",
                 "http://127.0.0.1:1234/v1/chat/completions", config.apiUrl, 500, y, text -> config.apiUrl = text);
@@ -94,38 +91,40 @@ public final class AIPlayerConfigScreen extends Screen {
 
     private void addField(String label, String description, String placeholder, String value, int maxLength, int y, FieldSetter setter) {
         int x = width / 2 - FIELD_WIDTH / 2;
-        TextFieldWidget field = new TextFieldWidget(textRenderer, x, y + 34, FIELD_WIDTH, FIELD_HEIGHT, Text.literal(label));
+        boolean visible = isRowVisible(y);
+
+        LabelWidget labelWidget = new LabelWidget(x, y, FIELD_WIDTH, 10, Text.literal(label), 0xFFFFFFFF);
+        labelWidget.visible = visible;
+        addDrawableChild(labelWidget);
+
+        LabelWidget descriptionWidget = new LabelWidget(x, y + 13, FIELD_WIDTH, 10, Text.literal(description), 0xFFA8B0C0);
+        descriptionWidget.visible = visible;
+        addDrawableChild(descriptionWidget);
+
+        TextFieldWidget field = new TextFieldWidget(textRenderer, x, y + 32, FIELD_WIDTH, FIELD_HEIGHT, Text.literal(label));
         field.setMaxLength(maxLength);
         field.setText(value == null ? "" : value);
         field.setPlaceholder(Text.literal(placeholder));
         field.setChangedListener(setter::set);
-        field.visible = isRowVisible(y);
-        fields.add(new FieldRow(label, description, field, y));
+        field.visible = visible;
         addDrawableChild(field);
     }
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         context.fill(0, 0, width, height, 0xD0101010);
-        context.fill(width / 2 - 250, 58, width / 2 + 250, height - 44, 0xCC181C24);
-        context.drawBorder(width / 2 - 250, 58, 500, height - 102, 0xFF3A4254);
-
-        super.render(context, mouseX, mouseY, delta);
+        context.fill(width / 2 - 300, 58, width / 2 + 300, height - 44, 0xCC181C24);
+        context.drawBorder(width / 2 - 300, 58, 600, height - 102, 0xFF3A4254);
 
         context.drawTextWithShadow(textRenderer, title, width / 2 - textRenderer.getWidth(title) / 2, 18, 0xFFFFFF);
         context.drawTextWithShadow(textRenderer, Text.literal("\u672c\u5730\u6a21\u578b\u8fde\u63a5\u548c API \u8bbe\u7f6e"), width / 2 - 88, 40, 0xA0A0A0);
-
-        for (FieldRow row : fields) {
-            if (isRowVisible(row.y())) {
-                context.drawTextWithShadow(textRenderer, row.label(), row.field().getX(), row.y(), 0xFFFFFF);
-                context.drawTextWithShadow(textRenderer, row.description(), row.field().getX(), row.y() + 13, 0xA8B0C0);
-            }
-        }
 
         if (!status.isBlank()) {
             String visible = status.length() > 80 ? status.substring(0, 80) : status;
             context.drawTextWithShadow(textRenderer, Text.literal(visible), width / 2 - FIELD_WIDTH / 2, height - 52, 0xFFFF55);
         }
+
+        super.render(context, mouseX, mouseY, delta);
     }
 
     @Override
@@ -149,13 +148,29 @@ public final class AIPlayerConfigScreen extends Screen {
     }
 
     private boolean isRowVisible(int y) {
-        return y + FIELD_HEIGHT + 34 > 58 && y < height - 58;
-    }
-
-    private record FieldRow(String label, String description, TextFieldWidget field, int y) {
+        return y + FIELD_HEIGHT + 32 > 58 && y < height - 58;
     }
 
     private interface FieldSetter {
         void set(String value);
+    }
+
+    private final class LabelWidget extends ClickableWidget {
+        private final int color;
+
+        private LabelWidget(int x, int y, int width, int height, Text message, int color) {
+            super(x, y, width, height, message);
+            this.color = color;
+            this.active = false;
+        }
+
+        @Override
+        protected void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
+            context.drawTextWithShadow(textRenderer, getMessage(), getX(), getY(), color);
+        }
+
+        @Override
+        protected void appendClickableNarrations(NarrationMessageBuilder builder) {
+        }
     }
 }
