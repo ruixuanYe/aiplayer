@@ -1,6 +1,8 @@
 package com.aiplayercompanion.command;
 
+import com.aiplayercompanion.ai.LMStudioClient;
 import com.aiplayercompanion.carpet.CarpetAIPlayerManager;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.server.command.ServerCommandSource;
@@ -9,6 +11,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
 import static net.minecraft.server.command.CommandManager.literal;
+import static net.minecraft.server.command.CommandManager.argument;
 
 public final class AIPlayerCommand {
     private AIPlayerCommand() {
@@ -23,7 +26,12 @@ public final class AIPlayerCommand {
                 .then(literal("spawn").executes(context -> spawn(context.getSource())))
                 .then(literal("remove").executes(context -> remove(context.getSource())))
                 .then(literal("status").executes(context -> status(context.getSource())))
-                .then(literal("list").executes(context -> list(context.getSource()))));
+                .then(literal("list").executes(context -> list(context.getSource())))
+                .then(literal("ai")
+                        .then(literal("test").executes(context -> aiTest(context.getSource())))
+                        .then(literal("chat")
+                                .then(argument("message", StringArgumentType.greedyString())
+                                        .executes(context -> aiChat(context.getSource(), StringArgumentType.getString(context, "message")))))));
     }
 
     private static int spawn(ServerCommandSource source) {
@@ -44,6 +52,32 @@ public final class AIPlayerCommand {
     private static int list(ServerCommandSource source) {
         ServerPlayerEntity owner = requirePlayer(source);
         return CarpetAIPlayerManager.list(owner);
+    }
+
+    private static int aiTest(ServerCommandSource source) {
+        ServerPlayerEntity player = requirePlayer(source);
+        player.sendMessage(Text.literal("AIPlayer：正在测试 AI 连接...").formatted(Formatting.YELLOW), false);
+        LMStudioClient.test().thenAccept(response -> source.getServer().execute(() -> {
+            if (response.ok()) {
+                player.sendMessage(Text.literal("AIPlayer：AI 连接成功，回复：" + response.content()).formatted(Formatting.GREEN), false);
+            } else {
+                player.sendMessage(Text.literal("AIPlayer：AI 连接失败：" + response.error()).formatted(Formatting.RED), false);
+            }
+        }));
+        return 1;
+    }
+
+    private static int aiChat(ServerCommandSource source, String message) {
+        ServerPlayerEntity player = requirePlayer(source);
+        player.sendMessage(Text.literal("AIPlayer：正在思考...").formatted(Formatting.YELLOW), false);
+        LMStudioClient.chat(message).thenAccept(response -> source.getServer().execute(() -> {
+            if (response.ok()) {
+                player.sendMessage(Text.literal("AIPlayer：" + response.content()).formatted(Formatting.AQUA), false);
+            } else {
+                player.sendMessage(Text.literal("AIPlayer：没有可显示的回复：" + response.error()).formatted(Formatting.RED), false);
+            }
+        }));
+        return 1;
     }
 
     private static ServerPlayerEntity requirePlayer(ServerCommandSource source) {

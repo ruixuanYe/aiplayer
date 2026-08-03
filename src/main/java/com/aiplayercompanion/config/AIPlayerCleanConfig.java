@@ -18,6 +18,12 @@ public final class AIPlayerCleanConfig {
     public String botName = DEFAULT_BOT_NAME;
     public String botUuid = "";
     public String ownerUuid = "";
+    public String apiUrl = "http://127.0.0.1:1234/v1/chat/completions";
+    public String modelName = "local-model";
+    public String apiKey = "";
+    public int timeoutSeconds = 15;
+    public boolean aiChatEnabled = true;
+    public String systemPrompt = "你是一个 Minecraft AI 陪伴玩家。你的回复应简短、自然、友好，不超过两句话。你不能声称完成了实际未完成的游戏操作。";
 
     private static AIPlayerCleanConfig INSTANCE;
 
@@ -72,6 +78,21 @@ public final class AIPlayerCleanConfig {
     private void sanitize() {
         if (botName == null || botName.isBlank()) {
             botName = DEFAULT_BOT_NAME;
+        }
+        if (apiUrl == null || apiUrl.isBlank()) {
+            apiUrl = "http://127.0.0.1:1234/v1/chat/completions";
+        }
+        if (modelName == null || modelName.isBlank()) {
+            modelName = "local-model";
+        }
+        if (apiKey == null) {
+            apiKey = "";
+        }
+        if (timeoutSeconds < 1 || timeoutSeconds > 120) {
+            timeoutSeconds = 15;
+        }
+        if (systemPrompt == null || systemPrompt.isBlank()) {
+            systemPrompt = "你是一个 Minecraft AI 陪伴玩家。你的回复应简短、自然、友好，不超过两句话。你不能声称完成了实际未完成的游戏操作。";
         }
     }
 }

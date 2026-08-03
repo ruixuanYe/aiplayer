@@ -14,6 +14,12 @@
   "entrypoints": {
     "main": [
       "com.aiplayercompanion.AIPlayerCompanionMod"
+    ],
+    "client": [
+      "com.aiplayercompanion.AIPlayerCompanionClient"
+    ],
+    "modmenu": [
+      "com.aiplayercompanion.client.AIPlayerModMenuIntegration"
     ]
   },
   "depends": {
