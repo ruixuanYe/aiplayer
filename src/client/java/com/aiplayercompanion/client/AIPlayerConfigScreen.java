@@ -2,6 +2,7 @@ package com.aiplayercompanion.client;
 
 import com.aiplayercompanion.ai.LMStudioClient;
 import com.aiplayercompanion.config.AIPlayerCleanConfig;
+import com.aiplayercompanion.util.BotNameUtil;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -100,6 +101,18 @@ public final class AIPlayerConfigScreen extends Screen {
                 .build();
         enabled.visible = isRowVisible(y);
         addDrawableChild(enabled);
+        y += ROW / 2;
+
+        ButtonWidget syncName = ButtonWidget.builder(Text.literal("\u540c\u6b65 AIPlayer \u540d\u79f0"), button -> {
+            AIPlayerCleanConfig current = AIPlayerCleanConfig.get();
+            current.botName = BotNameUtil.deriveFromModel(current.modelName);
+            current.autoNameFromModel = true;
+            current.clearBinding();
+            AIPlayerCleanConfig.save();
+            status = "\u5df2\u8986\u76d6\uff1a" + current.botName + "\uff0c\u4e0b\u6b21\u53ec\u5524\u751f\u6548";
+        }).dimensions(centerX - contentWidth() / 2, y, contentWidth(), FIELD_HEIGHT).build();
+        syncName.visible = isRowVisible(y);
+        addDrawableChild(syncName);
 
         addDrawableChild(ButtonWidget.builder(Text.literal("\u4fdd\u5b58\u8fd4\u56de"), button -> {
             AIPlayerCleanConfig.get().aiChatEnabled = aiChatEnabled;
@@ -182,7 +195,7 @@ public final class AIPlayerConfigScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        int contentHeight = ROW * 4 + 30;
+        int contentHeight = ROW * 4 + ROW / 2 + 30;
         int visibleHeight = Math.max(80, height - TOP - BOTTOM - 16);
         int maxScroll = Math.max(0, contentHeight - visibleHeight);
         scroll = Math.max(0, Math.min(maxScroll, scroll - (int) (verticalAmount * 18)));

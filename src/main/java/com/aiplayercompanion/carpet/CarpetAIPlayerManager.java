@@ -1,6 +1,7 @@
 package com.aiplayercompanion.carpet;
 
 import com.aiplayercompanion.config.AIPlayerCleanConfig;
+import com.aiplayercompanion.util.BotNameUtil;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.scoreboard.Scoreboard;
@@ -18,14 +19,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 public final class CarpetAIPlayerManager {
     public static final String AI_TAG = "aiplayer_companion.managed";
     public static final String TEAM_NAME = "aiplayer_companion";
 
     private static final String CARPET_MOD_ID = "carpet";
-    private static final Pattern SAFE_NAME_CHARS = Pattern.compile("[^A-Za-z0-9_]");
     private static final int SPAWN_CONFIRM_TICKS = 40;
     private static final Map<UUID, PendingSpawn> PENDING_SPAWNS = new HashMap<>();
 
@@ -237,25 +236,7 @@ public final class CarpetAIPlayerManager {
     }
 
     public static String deriveBotNameFromModel(String modelName) {
-        String lower = modelName == null ? "" : modelName.toLowerCase();
-        String detected;
-        if (lower.contains("deepseek")) {
-            detected = "AIDeepSeekR1";
-        } else if (lower.contains("claude")) {
-            detected = "AIClaude";
-        } else if (lower.contains("gemini")) {
-            detected = "AIGemini";
-        } else if (lower.contains("qwen")) {
-            detected = "AIQwen";
-        } else {
-            String[] parts = lower.split("[/:_-]+");
-            detected = parts.length == 0 || parts[parts.length - 1].isBlank() ? "AIPlayerBot" : "AI" + capitalize(parts[parts.length - 1]);
-        }
-        detected = SAFE_NAME_CHARS.matcher(detected).replaceAll("");
-        if (detected.isBlank()) {
-            detected = "AIPlayerBot";
-        }
-        return detected.length() > 16 ? detected.substring(0, 16) : detected;
+        return BotNameUtil.deriveFromModel(modelName);
     }
 
     private static void applyModelNameIfUnbound(AIPlayerCleanConfig config) {
@@ -264,13 +245,6 @@ public final class CarpetAIPlayerManager {
         }
         config.botName = deriveBotNameFromModel(config.modelName);
         AIPlayerCleanConfig.save();
-    }
-
-    private static String capitalize(String value) {
-        if (value == null || value.isBlank()) {
-            return "";
-        }
-        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
     }
 
     private record PendingSpawn(UUID ownerUuid, String botName, long startedTick, boolean notified) {
