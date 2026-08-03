@@ -1,7 +1,7 @@
 package com.aiplayercompanion;
 
 import com.aiplayercompanion.command.AIPlayerCommand;
-import com.aiplayercompanion.fakeplayer.AIPlayerFakePlayerManager;
+import com.aiplayercompanion.config.AIPlayerCleanConfig;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,8 +12,8 @@ public final class AIPlayerCompanionMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        AIPlayerFakePlayerManager.initialize();
+        AIPlayerCleanConfig.load();
         AIPlayerCommand.register();
-        LOGGER.info("AIPlayer Companion clean fake-player foundation loaded");
+        LOGGER.info("AIPlayer Companion Carpet adapter loaded");
     }
 }
