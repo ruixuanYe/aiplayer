@@ -22,7 +22,8 @@ public final class AIPlayerCommand {
         dispatcher.register(literal("aiplayer")
                 .then(literal("spawn").executes(context -> spawn(context.getSource())))
                 .then(literal("remove").executes(context -> remove(context.getSource())))
-                .then(literal("status").executes(context -> status(context.getSource()))));
+                .then(literal("status").executes(context -> status(context.getSource())))
+                .then(literal("list").executes(context -> list(context.getSource()))));
     }
 
     private static int spawn(ServerCommandSource source) {
@@ -38,6 +39,11 @@ public final class AIPlayerCommand {
     private static int status(ServerCommandSource source) {
         ServerPlayerEntity owner = requirePlayer(source);
         return CarpetAIPlayerManager.status(owner);
+    }
+
+    private static int list(ServerCommandSource source) {
+        ServerPlayerEntity owner = requirePlayer(source);
+        return CarpetAIPlayerManager.list(owner);
     }
 
     private static ServerPlayerEntity requirePlayer(ServerCommandSource source) {

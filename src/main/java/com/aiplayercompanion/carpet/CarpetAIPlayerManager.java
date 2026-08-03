@@ -3,6 +3,8 @@ package com.aiplayercompanion.carpet;
 import com.aiplayercompanion.config.AIPlayerCleanConfig;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.scoreboard.Scoreboard;
+import net.minecraft.scoreboard.Team;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -10,12 +12,17 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.world.GameMode;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 public final class CarpetAIPlayerManager {
+    public static final String AI_TAG = "aiplayer_companion.managed";
+    public static final String TEAM_NAME = "aiplayer_companion";
+
     private static final String CARPET_MOD_ID = "carpet";
     private static final int SPAWN_CONFIRM_TICKS = 40;
     private static final Map<UUID, PendingSpawn> PENDING_SPAWNS = new HashMap<>();
@@ -41,7 +48,7 @@ public final class CarpetAIPlayerManager {
         Optional<ServerPlayerEntity> existingManaged = findManaged(owner.getServer(), config);
         if (existingManaged.isPresent()) {
             ServerPlayerEntity bot = existingManaged.get();
-            forceSurvival(bot);
+            markAsAIPlayer(bot, owner);
             owner.sendMessage(Text.literal("AIPlayer 已存在：" + bot.getName().getString()).formatted(Formatting.YELLOW), false);
             return 0;
         }
@@ -102,8 +109,8 @@ public final class CarpetAIPlayerManager {
         }
 
         ServerPlayerEntity bot = managed.get();
-        forceSurvival(bot);
-        String message = "AIPlayer 状态：Carpet 假玩家在线，名称="
+        markAsAIPlayer(bot, owner);
+        String message = "AIPlayer 状态：在线，分类=AIPlayer 管理的 Carpet 假人，名称="
                 + bot.getName().getString()
                 + "，生命="
                 + String.format("%.1f/%.1f", bot.getHealth(), bot.getMaxHealth())
@@ -112,6 +119,24 @@ public final class CarpetAIPlayerManager {
                 + "，游戏模式=生存";
         owner.sendMessage(Text.literal(message).formatted(Formatting.GREEN), false);
         return 1;
+    }
+
+    public static int list(ServerPlayerEntity requester) {
+        List<String> managed = new ArrayList<>();
+        List<String> carpetOthers = new ArrayList<>();
+
+        for (ServerPlayerEntity player : requester.getServer().getPlayerManager().getPlayerList()) {
+            if (isManagedAIPlayer(player)) {
+                managed.add(player.getName().getString());
+            } else if (isCarpetFakePlayer(player)) {
+                carpetOthers.add(player.getName().getString());
+            }
+        }
+
+        requester.sendMessage(Text.literal("AIPlayer 分类：").formatted(Formatting.AQUA), false);
+        requester.sendMessage(Text.literal("AIPlayer 管理的假人：" + formatList(managed)).formatted(Formatting.GREEN), false);
+        requester.sendMessage(Text.literal("其他 Carpet 假人：" + formatList(carpetOthers)).formatted(Formatting.YELLOW), false);
+        return managed.size() + carpetOthers.size();
     }
 
     private static void tickPendingSpawns(MinecraftServer server) {
@@ -157,9 +182,37 @@ public final class CarpetAIPlayerManager {
     }
 
     private static void finishSpawn(ServerPlayerEntity owner, ServerPlayerEntity spawned) {
-        forceSurvival(spawned);
+        markAsAIPlayer(spawned, owner);
         AIPlayerCleanConfig.get().remember(spawned.getName().getString(), spawned.getUuidAsString(), owner.getUuidAsString());
-        owner.sendMessage(Text.literal("AIPlayer Carpet 假玩家已生成：" + spawned.getName().getString() + "，已切换为生存模式。").formatted(Formatting.GREEN), false);
+        owner.sendMessage(Text.literal("AIPlayer Carpet 假玩家已生成：" + spawned.getName().getString() + "，分类=AIPlayer，已切换为生存模式。").formatted(Formatting.GREEN), false);
+    }
+
+    private static void markAsAIPlayer(ServerPlayerEntity bot, ServerPlayerEntity owner) {
+        bot.addCommandTag(AI_TAG);
+        bot.addCommandTag("aiplayer_companion.owner." + owner.getUuidAsString());
+        forceSurvival(bot);
+        addToAIPlayerTeam(bot);
+    }
+
+    private static boolean isManagedAIPlayer(ServerPlayerEntity player) {
+        return player.getCommandTags().contains(AI_TAG);
+    }
+
+    private static boolean isCarpetFakePlayer(ServerPlayerEntity player) {
+        String className = player.getClass().getName().toLowerCase();
+        return className.contains("carpet") && className.contains("fake");
+    }
+
+    private static void addToAIPlayerTeam(ServerPlayerEntity bot) {
+        Scoreboard scoreboard = bot.getServer().getScoreboard();
+        Team team = scoreboard.getTeam(TEAM_NAME);
+        if (team == null) {
+            team = scoreboard.addTeam(TEAM_NAME);
+            team.setDisplayName(Text.literal("AIPlayer"));
+            team.setPrefix(Text.literal("[AIPlayer] ").formatted(Formatting.AQUA));
+            team.setColor(Formatting.AQUA);
+        }
+        scoreboard.addScoreHolderToTeam(bot.getNameForScoreboard(), team);
     }
 
     private static void forceSurvival(ServerPlayerEntity bot) {
@@ -169,6 +222,10 @@ public final class CarpetAIPlayerManager {
         bot.getAbilities().flying = false;
         bot.getAbilities().invulnerable = false;
         bot.sendAbilitiesUpdate();
+    }
+
+    private static String formatList(List<String> names) {
+        return names.isEmpty() ? "无" : String.join(", ", names);
     }
 
     private static void executeCarpetCommand(ServerCommandSource source, String command) {
