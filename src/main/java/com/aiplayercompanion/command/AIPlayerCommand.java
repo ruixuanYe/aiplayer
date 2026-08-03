@@ -2,6 +2,7 @@ package com.aiplayercompanion.command;
 
 import com.aiplayercompanion.ai.LMStudioClient;
 import com.aiplayercompanion.carpet.CarpetAIPlayerManager;
+import com.aiplayercompanion.navigation.CarpetFollowController;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -27,6 +28,9 @@ public final class AIPlayerCommand {
                 .then(literal("remove").executes(context -> remove(context.getSource())))
                 .then(literal("status").executes(context -> status(context.getSource())))
                 .then(literal("list").executes(context -> list(context.getSource())))
+                .then(literal("follow").executes(context -> follow(context.getSource())))
+                .then(literal("stop").executes(context -> stop(context.getSource())))
+                .then(literal("come").executes(context -> come(context.getSource())))
                 .then(literal("ai")
                         .then(literal("test").executes(context -> aiTest(context.getSource())))
                         .then(literal("chat")
@@ -52,6 +56,21 @@ public final class AIPlayerCommand {
     private static int list(ServerCommandSource source) {
         ServerPlayerEntity owner = requirePlayer(source);
         return CarpetAIPlayerManager.list(owner);
+    }
+
+    private static int follow(ServerCommandSource source) {
+        ServerPlayerEntity owner = requirePlayer(source);
+        return CarpetFollowController.follow(source, owner);
+    }
+
+    private static int stop(ServerCommandSource source) {
+        ServerPlayerEntity owner = requirePlayer(source);
+        return CarpetFollowController.stop(source, owner);
+    }
+
+    private static int come(ServerCommandSource source) {
+        ServerPlayerEntity owner = requirePlayer(source);
+        return CarpetFollowController.come(source, owner);
     }
 
     private static int aiTest(ServerCommandSource source) {

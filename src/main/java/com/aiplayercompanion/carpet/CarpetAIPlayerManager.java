@@ -165,7 +165,7 @@ public final class CarpetAIPlayerManager {
         }
     }
 
-    private static Optional<ServerPlayerEntity> findManaged(MinecraftServer server, AIPlayerCleanConfig config) {
+    public static Optional<ServerPlayerEntity> findManaged(MinecraftServer server, AIPlayerCleanConfig config) {
         if (config.botUuid == null || config.botUuid.isBlank()) {
             return Optional.empty();
         }
@@ -228,7 +228,7 @@ public final class CarpetAIPlayerManager {
         return names.isEmpty() ? "无" : String.join(", ", names);
     }
 
-    private static void executeCarpetCommand(ServerCommandSource source, String command) {
+    public static void executeCarpetCommand(ServerCommandSource source, String command) {
         source.getServer().getCommandManager().executeWithPrefix(source.withLevel(4).withSilent(), command);
     }
 

@@ -27,6 +27,11 @@ public final class AIPlayerCleanConfig {
     public int timeoutSeconds = 15;
     public boolean aiChatEnabled = true;
     public String systemPrompt = DEFAULT_SYSTEM_PROMPT;
+    public String behaviorMode = "FOLLOWING";
+    public double startFollowDistance = 4.0;
+    public double stopFollowDistance = 2.8;
+    public double sprintDistance = 10.0;
+    public double teleportDistance = 32.0;
 
     private static AIPlayerCleanConfig INSTANCE;
 
@@ -93,6 +98,21 @@ public final class AIPlayerCleanConfig {
         }
         if (timeoutSeconds < 1 || timeoutSeconds > 120) {
             timeoutSeconds = 15;
+        }
+        if (!"WAITING".equals(behaviorMode)) {
+            behaviorMode = "FOLLOWING";
+        }
+        if (startFollowDistance < 2.0 || startFollowDistance > 16.0) {
+            startFollowDistance = 4.0;
+        }
+        if (stopFollowDistance < 1.0 || stopFollowDistance >= startFollowDistance) {
+            stopFollowDistance = 2.8;
+        }
+        if (sprintDistance < startFollowDistance || sprintDistance > 32.0) {
+            sprintDistance = 10.0;
+        }
+        if (teleportDistance < 12.0 || teleportDistance > 128.0) {
+            teleportDistance = 32.0;
         }
         systemPrompt = DEFAULT_SYSTEM_PROMPT;
     }
