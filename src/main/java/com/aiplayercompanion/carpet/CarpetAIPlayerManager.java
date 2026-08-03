@@ -212,9 +212,10 @@ public final class CarpetAIPlayerManager {
         if (team == null) {
             team = scoreboard.addTeam(TEAM_NAME);
             team.setDisplayName(Text.literal("AIPlayer"));
-            team.setPrefix(Text.literal(""));
             team.setColor(Formatting.AQUA);
         }
+        team.setPrefix(Text.literal(""));
+        team.setSuffix(Text.literal(""));
         scoreboard.addScoreHolderToTeam(bot.getNameForScoreboard(), team);
     }
 
